@@ -1,15 +1,18 @@
 const axios = require('axios');
 
-let lastPostedWarnings = new Set();
-
-const relevantMunicipalities = [
-  'Wien',
-  'Wiener Neustadt',
-  'Mödling',
-  'Schneeberg',
-  'Hohe Wand',
-  'Waidhofen an der Ybbs'
+// Gemeinden als Codes (oder Namen, je nach Datenquelle)
+const relevantGemeinden = [
+  "10101", // Beispiel: Wien
+  "10201", // Wiener Neustadt
+  "10301", // Mödling
+  "10401", // Waidhofen an der Ybbs
+  // Füge hier weitere Codes hinzu
 ];
+
+// Hilfsfunktion, um Unix-Timestamp in lesbares Datum zu wandeln
+function formatTimestamp(unixTimestamp) {
+  return new Date(unixTimestamp * 1000).toLocaleString('de-AT');
+}
 
 async function getWarnings() {
   try {
@@ -17,39 +20,35 @@ async function getWarnings() {
     const res = await axios.get(url);
     const data = res.data;
 
-    console.log('ROHE WARNUNGSDATEN:', JSON.stringify(data, null, 2));  // Zum Debuggen
+    if (!data || data.type !== 'FeatureCollection' || !Array.isArray(data.features)) {
+      console.error('Unerwartetes Datenformat bei Warnungen');
+      return [];
+    }
 
     const results = [];
 
-    if (!data.features) return results;
-
     for (const feature of data.features) {
       const props = feature.properties;
+      if (!props || !props.gemeinden || !Array.isArray(props.gemeinden)) continue;
 
-      if (
-        props.municipalityName &&
-        relevantMunicipalities.some(m =>
-          props.municipalityName.toLowerCase().includes(m.toLowerCase())
-        )
-      ) {
-        const key = `${props.municipalityName}-${props.type}-${props.validFrom}`;
-        if (!lastPostedWarnings.has(key)) {
-          lastPostedWarnings.add(key);
+      // Prüfe, ob eine der Gemeinden relevant ist
+      const isRelevant = props.gemeinden.some(g => relevantGemeinden.includes(g));
+      if (!isRelevant) continue;
 
-          results.push({
-            region: props.municipalityName,
-            event: props.type,
-            level: props.severity,
-            start: new Date(props.validFrom).toLocaleString('de-AT'),
-            end: new Date(props.validTo).toLocaleString('de-AT'),
-          });
-        }
-      }
+      results.push({
+        warnid: props.warnid,
+        type: props.wtype,       // Warnungstyp (z.B. 5 = Gewitter)
+        level: props.wlevel,     // Warnstufe
+        start: formatTimestamp(props.start),
+        end: formatTimestamp(props.end),
+        gemeinden: props.gemeinden,
+      });
     }
 
     return results;
-  } catch (err) {
-    console.error('Fehler beim Abrufen der GeoSphere Warnungen:', err.message);
+
+  } catch (error) {
+    console.error('Fehler beim Abrufen der Warnungen:', error.message);
     return [];
   }
 }
