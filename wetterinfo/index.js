@@ -9,8 +9,8 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
-const weatherChannelId = '1388158627768172825';
-const warningsChannelId = '1388158584575098900';
+const weatherChannelId = '1388158627768172825';  // Wetterberichte hier posten
+const warningsChannelId = '1388158584575098900'; // Warnungen hier posten
 
 const cities = [
   'Wiener Neustadt',
