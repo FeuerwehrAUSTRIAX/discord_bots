@@ -30,7 +30,7 @@ client.on('messageCreate', async (message) => {
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
   if (message.author.bot && !message.webhookId) return;
 
-  // Entfernt Titel und unnötige Zeichen
+  // Entferne Standardprefix & überflüssige Zeichen
   const removePrefix = (text) =>
     text
       .replace(/Ehrenamt Alarmierung: FF Wiener Neustadt\s*-*\s*/gi, '')
@@ -65,9 +65,8 @@ client.on('messageCreate', async (message) => {
   const embed = new EmbedBuilder()
     .setColor(0xE67E22)
     .setTitle('Ehrenamt Alarmierung: FF Wiener Neustadt')
-    .setDescription(descriptionText)
+    .setDescription(`${descriptionText}\n\n${timestamp}`) // Datum in Beschreibung
     .addFields(
-      { name: '📅 Alarmierungszeitpunkt:', value: timestamp, inline: false },
       { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
       { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
       { name: '🟠 Komme später', value: 'Niemand bisher', inline: true }
@@ -125,12 +124,10 @@ client.on('interactionCreate', async (interaction) => {
     entry.late.push(userId);
   }
 
-  const existingFields = interaction.message.embeds[0].fields;
-  const timestampField = existingFields.find(f => f.name.includes('Alarmierungszeitpunkt'));
+  const originalEmbed = interaction.message.embeds[0];
 
-  const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+  const newEmbed = EmbedBuilder.from(originalEmbed)
     .setFields(
-      { name: timestampField.name, value: timestampField.value, inline: false },
       {
         name: '✅ Zusagen',
         value: entry.coming.length > 0
