@@ -2,38 +2,45 @@ const axios = require('axios');
 
 let lastPostedWarnings = new Set();
 
+const relevantMunicipalities = [
+  'Wien',
+  'Wiener Neustadt',
+  'Mödling',
+  'Schneeberg',
+  'Hohe Wand',
+  'Waidhofen an der Ybbs'
+];
+
 async function getWarnings() {
   try {
-    const res = await axios.get('https://warnungen.zamg.at/html/ogd/ogd_wetterwarnungen.json');
-    const data = res.data;
+    const url = 'https://warnungen.zamg.at/wsapp/api/getWarnstatus';
+    const res = await axios.get(url);
+    const data = res.data; // GeoJSON FeatureCollection
 
-    const relevantRegions = [
-      'Wien',
-      'Wiener Neustadt',
-      'Mödling',
-      'Schneeberg',
-      'Hohe Wand',
-      'Waidhofen an der Ybbs', // Neu hinzugefügt
-    ];
     const results = [];
 
-    for (const entry of data) {
+    if (!data.features) return results;
+
+    for (const feature of data.features) {
+      const props = feature.properties;
+
+      // props.municipalityName ist der Gemeindename
       if (
-        entry.regionName && // Prüfen, ob regionName existiert
-        relevantRegions.some(r =>
-          entry.regionName.toLowerCase().includes(r.toLowerCase())
+        props.municipalityName &&
+        relevantMunicipalities.some(m =>
+          props.municipalityName.toLowerCase().includes(m.toLowerCase())
         )
       ) {
-        const key = `${entry.regionName}-${entry.event}-${entry.start}`;
+        const key = `${props.municipalityName}-${props.type}-${props.validFrom}`;
         if (!lastPostedWarnings.has(key)) {
           lastPostedWarnings.add(key);
 
           results.push({
-            region: entry.regionName,
-            event: entry.event,
-            level: entry.level,
-            start: new Date(entry.start).toLocaleString('de-AT'),
-            end: new Date(entry.end).toLocaleString('de-AT'),
+            region: props.municipalityName,
+            event: props.type,         // Warnungsart
+            level: props.severity,     // Warnstufe
+            start: new Date(props.validFrom).toLocaleString('de-AT'),
+            end: new Date(props.validTo).toLocaleString('de-AT'),
           });
         }
       }
@@ -41,7 +48,7 @@ async function getWarnings() {
 
     return results;
   } catch (err) {
-    console.error('Fehler beim Abrufen der Warnungen:', err.message);
+    console.error('Fehler beim Abrufen der GeoSphere Warnungen:', err.message);
     return [];
   }
 }
