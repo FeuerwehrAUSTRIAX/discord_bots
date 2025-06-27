@@ -80,7 +80,6 @@ client.on('interactionCreate', async (interaction) => {
   if (!entry) return;
 
   const nickname = interaction.member?.nickname || interaction.user.username;
-  const displayName = `[${nickname}](https://discord.com/users/${interaction.user.id})`;
 
 
   // Entferne alle vorherigen Antworten
