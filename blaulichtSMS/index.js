@@ -13,14 +13,14 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers
+    GatewayIntentBits.MessageContent
   ]
 });
 
 const SOURCE_CHANNEL_ID = '1388070050061221990'; // Dein Eingangs-Channel
 const TARGET_CHANNEL_ID = '1294003170116239431'; // Zielkanal mit Buttons
 
+// Antwort-Speicher pro Nachricht
 const responseTracker = new Collection();
 
 client.once('ready', () => {
@@ -79,52 +79,42 @@ client.on('interactionCreate', async (interaction) => {
   const entry = responseTracker.get(interaction.message.id);
   if (!entry) return;
 
-  try {
-    // Anzeigenamen holen
-    const member = await interaction.guild.members.fetch(interaction.user.id);
-    const displayName = member.displayName;
+  const username = interaction.user.username;
 
-    // Alte Antwort entfernen
-    entry.coming = entry.coming.filter(name => name !== displayName);
-    entry.notComing = entry.notComing.filter(name => name !== displayName);
-    entry.late = entry.late.filter(name => name !== displayName);
+  // Entferne alle vorherigen Antworten
+  entry.coming = entry.coming.filter(name => name !== username);
+  entry.notComing = entry.notComing.filter(name => name !== username);
+  entry.late = entry.late.filter(name => name !== username);
 
-    // Neue Antwort setzen
-    if (interaction.customId === 'come_yes') {
-      entry.coming.push(displayName);
-    } else if (interaction.customId === 'come_no') {
-      entry.notComing.push(displayName);
-    } else if (interaction.customId === 'come_late') {
-      entry.late.push(displayName);
-    }
-
-    // Embed aktualisieren
-    const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-      .setFields(
-        {
-          name: '✅ Zusagen',
-          value: entry.coming.length > 0 ? entry.coming.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
-          inline: true
-        },
-        {
-          name: '❌ Absagen',
-          value: entry.notComing.length > 0 ? entry.notComing.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
-          inline: true
-        },
-        {
-          name: '🟠 Komme später',
-          value: entry.late.length > 0 ? entry.late.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
-          inline: true
-        }
-      );
-
-    
-    await entry.message.edit({ embeds: [newEmbed] });
-    await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
-  } catch (err) {
-    console.error('❌ Fehler bei Interaktion:', err.message);
-    await interaction.reply({ content: 'Fehler beim Speichern deiner Antwort 😢', ephemeral: true });
+  if (interaction.customId === 'come_yes') {
+    entry.coming.push(username);
+  } else if (interaction.customId === 'come_no') {
+    entry.notComing.push(username);
+  } else if (interaction.customId === 'come_late') {
+    entry.late.push(username);
   }
+
+  const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+    .setFields(
+      {
+        name: '✅ Zusagen',
+        value: entry.coming.length > 0 ? entry.coming.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+        inline: true
+      },
+      {
+        name: '❌ Absagen',
+        value: entry.notComing.length > 0 ? entry.notComing.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+        inline: true
+      },
+      {
+        name: '🟠 Komme später',
+        value: entry.late.length > 0 ? entry.late.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+        inline: true
+      }
+    );
+
+  await entry.message.edit({ embeds: [newEmbed] });
+  await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
