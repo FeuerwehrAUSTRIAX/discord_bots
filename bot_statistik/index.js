@@ -20,8 +20,10 @@ client.once('ready', async () => {
     { name: 'FFWN', id: '1293999568991555667' },
   ];
 
-  const categoryId = '1384578209722404884';
-  const voiceChannels = {};
+  const categoryId = '1384578209722404884'; // Deine Sprachkanal-Kategorie
+  const voiceChannels = {
+    updateInfo: null, // Sprachkanal für Zeitstempel
+  };
 
   const ensureChannels = async () => {
     for (const role of rolesOrdered) {
@@ -44,6 +46,26 @@ client.once('ready', async () => {
 
       voiceChannels[role.name] = existing;
     }
+
+    // Zusatz-Sprachkanal für Datum & Uhrzeit
+    let updateInfoChannel = guild.channels.cache.find(
+      (ch) =>
+        ch.type === ChannelType.GuildVoice &&
+        ch.parentId === categoryId &&
+        ch.name.startsWith('📅')
+    );
+
+    if (!updateInfoChannel) {
+      updateInfoChannel = await guild.channels.create({
+        name: '📅 Initialisierung...',
+        type: ChannelType.GuildVoice,
+        parent: categoryId,
+        position: rolesOrdered.length + 1,
+      });
+      console.log(`🆕 Erstellt: ${updateInfoChannel.name}`);
+    }
+
+    voiceChannels.updateInfo = updateInfoChannel;
   };
 
   const updateCounts = async () => {
@@ -61,6 +83,19 @@ client.once('ready', async () => {
           console.log(`➡️ ${role.name}: ${count}`);
         }
       }
+
+      // Zeitstempel setzen
+      const timestamp = new Date().toLocaleString('de-DE', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      });
+
+      const infoChannel = voiceChannels.updateInfo;
+      if (infoChannel) {
+        await infoChannel.setName(`📅 ${timestamp}`);
+        console.log(`⏰ Zeitstempel aktualisiert: ${timestamp}`);
+      }
+
     } catch (err) {
       console.error('❌ Fehler beim Aktualisieren:', err);
     }
