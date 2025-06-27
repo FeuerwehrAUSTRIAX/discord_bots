@@ -11,16 +11,13 @@ async function getWarnings() {
     const results = [];
 
     for (const entry of data) {
-      // Region passt zu deiner Liste?
       if (relevantRegions.some(r =>
         entry.regionName.toLowerCase().includes(r.toLowerCase())
       )) {
-        // Doppelte Einträge verhindern
         const key = `${entry.regionName}-${entry.event}-${entry.start}`;
         if (!lastPostedWarnings.has(key)) {
           lastPostedWarnings.add(key);
 
-          // Formatieren
           results.push({
             region: entry.regionName,
             event: entry.event,
