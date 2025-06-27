@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const getLiveWeather = require('./getLiveWeather');
 const getWarnings = require('./getWarnings');
+const createWeatherEmbed = require('./createWeatherEmbed');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -22,7 +23,7 @@ client.once('ready', async () => {
   console.log(`✅ Bot eingeloggt als ${client.user.tag}`);
 
   await postWeatherReport();
-  setInterval(postWeatherReport, 60 * 60 * 1000); // stündlich
+  setInterval(postWeatherReport, 60 * 60 * 1000); // jede Stunde
 
   await postNewWarnings();
   setInterval(postNewWarnings, 15 * 60 * 1000); // alle 15 Minuten
@@ -36,13 +37,16 @@ async function postWeatherReport() {
     const data = await getLiveWeather(city);
     if (!data) continue;
 
-    const message = `📆 **Wetterbericht – ${now}**\n\n` +
-                    `📍 **${city}**\n` +
-                    `🌤️ ${data.condition}, ${data.temp}°C (gefühlt ${data.feelsLike}°C)\n` +
-                    `💨 Wind: ${data.wind} km/h\n` +
-                    `❌ Keine aktuellen Warnungen`;
+    const embed = createWeatherEmbed(
+      data.city,
+      data.condition,
+      data.temp,
+      data.feelsLike,
+      data.wind,
+      client
+    );
 
-    await channel.send(message);
+    await channel.send({ embeds: [embed] });
   }
 }
 
