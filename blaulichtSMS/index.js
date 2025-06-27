@@ -17,10 +17,9 @@ const client = new Client({
   ]
 });
 
-const SOURCE_CHANNEL_ID = '1388070050061221990'; // Dein Eingangs-Channel
+const SOURCE_CHANNEL_ID = '1388070050061221990'; // Eingangs-Channel
 const TARGET_CHANNEL_ID = '1294003170116239431'; // Zielkanal mit Buttons
 
-// Antwort-Speicher pro Nachricht
 const responseTracker = new Collection();
 
 client.once('ready', () => {
@@ -79,37 +78,44 @@ client.on('interactionCreate', async (interaction) => {
   const entry = responseTracker.get(interaction.message.id);
   if (!entry) return;
 
-  const mention = `<@${interaction.user.id}>`;
+  const userId = interaction.user.id;
 
+  // Entferne alle vorherigen Antworten dieses Users
+  entry.coming = entry.coming.filter(id => id !== userId);
+  entry.notComing = entry.notComing.filter(id => id !== userId);
+  entry.late = entry.late.filter(id => id !== userId);
 
-  // Entferne alle vorherigen Antworten
-  entry.coming = entry.coming.filter(name => name !== username);
-  entry.notComing = entry.notComing.filter(name => name !== username);
-  entry.late = entry.late.filter(name => name !== username);
-
+  // Neue Antwort speichern
   if (interaction.customId === 'come_yes') {
-    entry.coming.push(username);
+    entry.coming.push(userId);
   } else if (interaction.customId === 'come_no') {
-    entry.notComing.push(username);
+    entry.notComing.push(userId);
   } else if (interaction.customId === 'come_late') {
-    entry.late.push(username);
+    entry.late.push(userId);
   }
 
+  // Neue Embed mit klickbaren User-Mentions erstellen
   const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
     .setFields(
       {
         name: '✅ Zusagen',
-        value: entry.coming.length > 0 ? entry.coming.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+        value: entry.coming.length > 0
+          ? entry.coming.map(id => `• <@${id}>`).join('\n')
+          : 'Niemand bisher',
         inline: true
       },
       {
         name: '❌ Absagen',
-        value: entry.notComing.length > 0 ? entry.notComing.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+        value: entry.notComing.length > 0
+          ? entry.notComing.map(id => `• <@${id}>`).join('\n')
+          : 'Niemand bisher',
         inline: true
       },
       {
         name: '🟠 Komme später',
-        value: entry.late.length > 0 ? entry.late.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+        value: entry.late.length > 0
+          ? entry.late.map(id => `• <@${id}>`).join('\n')
+          : 'Niemand bisher',
         inline: true
       }
     );
