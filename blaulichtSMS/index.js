@@ -118,6 +118,7 @@ client.on('interactionCreate', async (interaction) => {
         }
       );
 
+    
     await entry.message.edit({ embeds: [newEmbed] });
     await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
   } catch (err) {
