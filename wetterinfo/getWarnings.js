@@ -4,7 +4,7 @@ let lastPostedWarnings = new Set();
 
 async function getWarnings() {
   try {
-    const res = await axios.get('https://warnungen.zamg.ac.at/html/ogd/ogd_wetterwarnungen.json');
+    const res = await axios.get('https://www.warnungen.zamg.at/html/ogd/ogd_wetterwarnungen.json'); // <- FIXED URL!
     const data = res.data;
 
     const relevantRegions = ['Wien', 'Wiener Neustadt', 'Mödling', 'Schneeberg', 'Hohe Wand'];
