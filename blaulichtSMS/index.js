@@ -30,16 +30,24 @@ client.on('messageCreate', async (message) => {
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
   if (message.author.bot && !message.webhookId) return;
 
-  // Beschreibung intelligent wählen
-  const content = message.content?.trim();
+  // 🔍 Smarte Inhaltsauswertung
   let descriptionText = '';
 
-  if (content) {
-    descriptionText = content;
-  } else if (message.attachments.size > 0) {
-    descriptionText = '📎 Nachricht enthält einen Anhang.';
+  if (message.content?.trim()) {
+    descriptionText = message.content.trim();
   } else if (message.embeds.length > 0) {
-    descriptionText = '🔗 Nachricht enthält ein eingebettetes Element.';
+    const firstEmbed = message.embeds[0];
+    if (firstEmbed.title || firstEmbed.description) {
+      descriptionText = [
+        firstEmbed.title ?? '',
+        firstEmbed.description ?? ''
+      ].filter(Boolean).join(' – ');
+    } else {
+      descriptionText = '🔗 Nachricht enthält ein eingebettetes Element.';
+    }
+  } else if (message.attachments.size > 0) {
+    const attachment = message.attachments.first();
+    descriptionText = `📎 Anhang: ${attachment.name || attachment.url}`;
   } else {
     descriptionText = '⚠️ Kein sichtbarer Nachrichtentext vorhanden.';
   }
