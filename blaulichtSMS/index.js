@@ -79,7 +79,7 @@ client.on('interactionCreate', async (interaction) => {
   const entry = responseTracker.get(interaction.message.id);
   if (!entry) return;
 
-  const nickname = interaction.member?.nickname || interaction.user.username;
+  const mention = `<@${interaction.user.id}>`;
 
 
   // Entferne alle vorherigen Antworten
