@@ -73,6 +73,7 @@ client.on('messageCreate', async (message) => {
     .setTitle('Ehrenamt Alarmierung: FF Wiener Neustadt')
     .setDescription(`${descriptionText}\n\n${timestamp}`)
     .addFields(
+      { name: '\u200B', value: '\u200B' }, // <- Leerer Abstand (Unicode-Zeichen)
       { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
       { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
       { name: '🟠 Komme später', value: 'Niemand bisher', inline: true }
