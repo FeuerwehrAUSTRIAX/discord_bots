@@ -33,10 +33,14 @@ client.on('messageCreate', async (message) => {
   // Erlaube Webhook-Nachrichten, blockiere aber andere Bot-Nachrichten
   if (message.author.bot && !message.webhookId) return;
 
+  // Nachrichtentext prüfen (leere Inhalte vermeiden)
+  const content = message.content?.trim();
+  const descriptionText = content && content.length > 0 ? content : '⚠️ Keine Nachrichtentext vorhanden.';
+
   const embed = new EmbedBuilder()
     .setColor(0xE67E22)
     .setTitle('Ehrenamt Alarmierung: FF Wiener Neustadt')
-    .setDescription(message.content)
+    .setDescription(descriptionText)
     .addFields(
       { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
       { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
@@ -84,12 +88,12 @@ client.on('interactionCreate', async (interaction) => {
 
   const userId = interaction.user.id;
 
-  // Entferne alle vorherigen Antworten dieses Users
+  // Alte Reaktionen des Users entfernen
   entry.coming = entry.coming.filter(id => id !== userId);
   entry.notComing = entry.notComing.filter(id => id !== userId);
   entry.late = entry.late.filter(id => id !== userId);
 
-  // Neue Antwort speichern
+  // Neue Reaktion speichern
   if (interaction.customId === 'come_yes') {
     entry.coming.push(userId);
   } else if (interaction.customId === 'come_no') {
@@ -98,7 +102,7 @@ client.on('interactionCreate', async (interaction) => {
     entry.late.push(userId);
   }
 
-  // Neue Embed mit klickbaren User-Mentions erstellen
+  // Embed aktualisieren
   const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
     .setFields(
       {
