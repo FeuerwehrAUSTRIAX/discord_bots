@@ -7,9 +7,11 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
+// Textchannel-IDs für Wetter und Warnungen
 const weatherChannelId = '1388158627768172825';
 const warningsChannelId = '1388158584575098900';
 
+// Orte
 const cities = [
   'Wiener Neustadt',
   'Mödling',
@@ -21,19 +23,18 @@ const cities = [
 client.once('ready', async () => {
   console.log(`✅ Bot eingeloggt als ${client.user.tag}`);
 
-  // 🔁 Wetterbericht jede Stunde
-  setInterval(postWeatherReport, 60 * 60 * 1000);
+  // Starte sofort & dann jede Stunde Wetterbericht
   await postWeatherReport();
+  setInterval(postWeatherReport, 60 * 60 * 1000);
 
-  // ⚠️ Warnungen alle 15 Min
-  setInterval(postNewWarnings, 15 * 60 * 1000);
+  // Starte sofort & dann alle 15 Minuten auf Warnungen prüfen
   await postNewWarnings();
+  setInterval(postNewWarnings, 15 * 60 * 1000);
 });
 
 async function postWeatherReport() {
   const channel = await client.channels.fetch(weatherChannelId);
   const now = new Date().toLocaleString('de-AT');
-
   let message = `📆 **Wetterbericht – ${now}**\n\n`;
 
   for (const city of cities) {
@@ -62,4 +63,4 @@ async function postNewWarnings() {
   }
 }
 
-client.login(process.env.BOT_TOKEN);
+client.login(process.env.BOT_TOKEN_WETTER);
