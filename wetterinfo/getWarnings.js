@@ -8,7 +8,6 @@ async function getWarnings() {
     const data = res.data;
 
     const relevantRegions = ['Wien', 'Wiener Neustadt', 'Mödling', 'Schneeberg', 'Hohe Wand'];
-
     const results = [];
 
     for (const entry of data) {
@@ -16,7 +15,6 @@ async function getWarnings() {
         entry.regionName.toLowerCase().includes(r.toLowerCase())
       )) {
         const key = `${entry.regionName}-${entry.event}-${entry.start}`;
-
         if (!lastPostedWarnings.has(key)) {
           lastPostedWarnings.add(key);
 
