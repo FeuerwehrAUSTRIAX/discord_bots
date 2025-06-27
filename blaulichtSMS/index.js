@@ -30,8 +30,12 @@ client.on('messageCreate', async (message) => {
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
   if (message.author.bot && !message.webhookId) return;
 
+  // Entfernt Titel und unnötige Zeichen
   const removePrefix = (text) =>
-    text.replace(/Ehrenamt Alarmierung: FF Wiener Neustadt\s*-*\s*/gi, '').trim();
+    text
+      .replace(/Ehrenamt Alarmierung: FF Wiener Neustadt\s*-*\s*/gi, '')
+      .replace(/^(\*{1,2}\s*[-–]*\s*)+/g, '') // entfernt führende ** oder –
+      .trim();
 
   let descriptionText = '';
   if (message.content?.trim()) {
@@ -42,7 +46,7 @@ client.on('messageCreate', async (message) => {
       descriptionText = [
         firstEmbed.title ? removePrefix(firstEmbed.title) : '',
         firstEmbed.description ? removePrefix(firstEmbed.description) : ''
-      ].filter(Boolean).join(' – ');
+      ].filter(Boolean).join('\n\n');
     } else {
       descriptionText = '🔗 Nachricht enthält ein eingebettetes Element.';
     }
@@ -63,7 +67,7 @@ client.on('messageCreate', async (message) => {
     .setTitle('Ehrenamt Alarmierung: FF Wiener Neustadt')
     .setDescription(descriptionText)
     .addFields(
-      { name: '🕒 Zeit', value: timestamp, inline: false },
+      { name: '📅 Alarmierungszeitpunkt:', value: timestamp, inline: false },
       { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
       { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
       { name: '🟠 Komme später', value: 'Niemand bisher', inline: true }
@@ -121,13 +125,12 @@ client.on('interactionCreate', async (interaction) => {
     entry.late.push(userId);
   }
 
+  const existingFields = interaction.message.embeds[0].fields;
+  const timestampField = existingFields.find(f => f.name.includes('Alarmierungszeitpunkt'));
+
   const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
     .setFields(
-      {
-        name: '🕒 Zeit',
-        value: interaction.message.embeds[0].fields.find(f => f.name === '🕒 Zeit')?.value || 'Zeit unbekannt',
-        inline: false
-      },
+      { name: timestampField.name, value: timestampField.value, inline: false },
       {
         name: '✅ Zusagen',
         value: entry.coming.length > 0
