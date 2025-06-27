@@ -1,44 +1,42 @@
 const axios = require('axios');
 
-let lastPostedWarnings = new Set();
-
 async function getWarnings() {
   try {
-    const lon = 16.3738;
+    const lon = 16.3738;  // Koordinaten Wien
     const lat = 48.2082;
     const url = `https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=${lon}&lat=${lat}&lang=de`;
+
     const res = await axios.get(url, {
-      headers: {
-        accept: 'application/json'
-      }
+      headers: { accept: 'application/json' }
     });
+
     const data = res.data;
+
+    if (!data.features) return [];
 
     const results = [];
 
-    if (!data || !data.features) return results;
-
     for (const feature of data.features) {
-      const props = feature.properties;
+      const locationName = feature.properties?.location?.properties?.name || 'Unbekannter Ort';
+      const warnings = feature.properties?.warnings || [];
 
-      const key = `${props.warnid}-${props.wtype}-${props.start}`;
-      if (!lastPostedWarnings.has(key)) {
-        lastPostedWarnings.add(key);
-
+      for (const warn of warnings) {
+        const props = warn.properties;
         results.push({
-          region: props.region || 'Wien',
-          event: props.wtype,
-          level: props.wlevel,
-          start: new Date(props.start * 1000).toLocaleString('de-AT'),
-          end: new Date(props.end * 1000).toLocaleString('de-AT'),
-          description: props.description || ''
+          location: locationName,
+          text: props.text,
+          begin: props.begin,
+          end: props.end,
+          auswirkungen: props.auswirkungen,
+          empfehlungen: props.empfehlungen,
+          warnstufe: props.warnstufeid,
         });
       }
     }
 
     return results;
-  } catch (err) {
-    console.error('Fehler beim Abrufen der Warnungen:', err.message);
+  } catch (error) {
+    console.error('Fehler beim Abrufen der Warnungen:', error.message);
     return [];
   }
 }
