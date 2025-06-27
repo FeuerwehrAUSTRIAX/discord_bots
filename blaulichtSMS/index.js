@@ -17,10 +17,10 @@ const client = new Client({
   ]
 });
 
-const SOURCE_CHANNEL_ID = '1388070050061221990'; // Alarm-Eingang
-const TARGET_CHANNEL_ID = '1294003170116239431'; // Ausgabe-Kanal mit Buttons
+const SOURCE_CHANNEL_ID = '1388070050061221990'; // Dein Eingangs-Channel
+const TARGET_CHANNEL_ID = '1294003170116239431'; // Zielkanal mit Buttons
 
-// Speicherung pro Alarm-Nachricht
+// Antwort-Speicher pro Nachricht
 const responseTracker = new Collection();
 
 client.once('ready', () => {
@@ -53,7 +53,7 @@ client.on('messageCreate', async (message) => {
     new ButtonBuilder()
       .setCustomId('come_late')
       .setLabel('🟠 Ich komme später')
-      .setStyle(ButtonStyle.Primary) // Optisch: Blau (Orange geht nicht nativ)
+      .setStyle(ButtonStyle.Primary)
   );
 
   try {
@@ -81,7 +81,7 @@ client.on('interactionCreate', async (interaction) => {
 
   const username = interaction.user.username;
 
-  // Entferne vorherige Antwort
+  // Entferne alle vorherigen Antworten
   entry.coming = entry.coming.filter(name => name !== username);
   entry.notComing = entry.notComing.filter(name => name !== username);
   entry.late = entry.late.filter(name => name !== username);
@@ -94,7 +94,6 @@ client.on('interactionCreate', async (interaction) => {
     entry.late.push(username);
   }
 
-  // Aktualisiere das Embed mit aktuellen Listen
   const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
     .setFields(
       {
