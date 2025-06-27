@@ -11,7 +11,8 @@ const {
   TextInputBuilder,
   TextInputStyle,
   ChannelType,
-  Events
+  Events,
+  EmbedBuilder
 } = require('discord.js');
 
 const client = new Client({
@@ -169,12 +170,17 @@ client.on(Events.InteractionCreate, async interaction => {
       return interaction.reply({ content: '❌ Ungültiges Datum!', ephemeral: true });
     }
 
-    const message = await interaction.channel.send(
-      `📋 Abmeldung von ${interaction.member.displayName} eingegangen!\n\n` +
-      `🔹 Dienstgrad: ${dienstgrad}\n` +
-      `🔹 Zeitraum: ${start} - ${ende}\n\n` +
-      `✅ Die Abmeldung wurde erfolgreich registriert.`
-    );
+    const embed = new EmbedBuilder()
+      .setTitle(`📋 Abmeldung von ${interaction.member.displayName}`)
+      .addFields(
+        { name: '🔹 Dienstgrad', value: dienstgrad, inline: true },
+        { name: '🔹 Zeitraum', value: `${start} - ${ende}`, inline: true }
+      )
+      .setColor(0x2ecc71)
+      .setFooter({ text: '✅ Die Abmeldung wurde erfolgreich registriert.' })
+      .setTimestamp();
+
+    const message = await interaction.channel.send({ embeds: [embed] });
 
     abmeldungen.push({
       messageId: message.id,
