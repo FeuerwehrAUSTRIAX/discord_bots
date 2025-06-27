@@ -1,12 +1,14 @@
 {
-  "name": "discord-relay-bot",
+  "name": "blaulichtSMS",
   "version": "1.0.0",
+  "description": "Relays alarm messages via webhook",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "discord.js": "^14.0.0",
-    "dotenv": "^16.0.0"
+    "dotenv": "^16.0.0",
+    "axios": "^1.6.0"
   }
 }
