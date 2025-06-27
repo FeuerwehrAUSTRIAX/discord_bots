@@ -7,11 +7,9 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
-// Textchannel-IDs für Wetter und Warnungen
 const weatherChannelId = '1388158627768172825';
 const warningsChannelId = '1388158584575098900';
 
-// Orte
 const cities = [
   'Wiener Neustadt',
   'Mödling',
@@ -23,31 +21,29 @@ const cities = [
 client.once('ready', async () => {
   console.log(`✅ Bot eingeloggt als ${client.user.tag}`);
 
-  // Starte sofort & dann jede Stunde Wetterbericht
   await postWeatherReport();
-  setInterval(postWeatherReport, 60 * 60 * 1000);
+  setInterval(postWeatherReport, 60 * 60 * 1000); // stündlich
 
-  // Starte sofort & dann alle 15 Minuten auf Warnungen prüfen
   await postNewWarnings();
-  setInterval(postNewWarnings, 15 * 60 * 1000);
+  setInterval(postNewWarnings, 15 * 60 * 1000); // alle 15 Minuten
 });
 
 async function postWeatherReport() {
   const channel = await client.channels.fetch(weatherChannelId);
   const now = new Date().toLocaleString('de-AT');
-  let message = `📆 **Wetterbericht – ${now}**\n\n`;
 
   for (const city of cities) {
     const data = await getLiveWeather(city);
     if (!data) continue;
 
-    message += `📍 **${city}**\n`;
-    message += `🌤️ ${data.condition}, ${data.temp}°C (gefühlt ${data.feelsLike}°C)\n`;
-    message += `💨 Wind: ${data.wind} km/h\n`;
-    message += `❌ Keine aktuellen Warnungen\n\n`;
-  }
+    const message = `📆 **Wetterbericht – ${now}**\n\n` +
+                    `📍 **${city}**\n` +
+                    `🌤️ ${data.condition}, ${data.temp}°C (gefühlt ${data.feelsLike}°C)\n` +
+                    `💨 Wind: ${data.wind} km/h\n` +
+                    `❌ Keine aktuellen Warnungen`;
 
-  await channel.send(message.trim());
+    await channel.send(message);
+  }
 }
 
 async function postNewWarnings() {
