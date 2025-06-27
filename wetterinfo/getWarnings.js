@@ -7,7 +7,14 @@ async function getWarnings() {
     const res = await axios.get('https://warnungen.zamg.at/html/ogd/ogd_wetterwarnungen.json');
     const data = res.data;
 
-    const relevantRegions = ['Wien', 'Wiener Neustadt', 'Mödling', 'Schneeberg', 'Hohe Wand'];
+    const relevantRegions = [
+      'Wien',
+      'Wiener Neustadt',
+      'Mödling',
+      'Schneeberg',
+      'Hohe Wand',
+      'Waidhofen an der Ybbs', // Neu hinzugefügt
+    ];
     const results = [];
 
     for (const entry of data) {
