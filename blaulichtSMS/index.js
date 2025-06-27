@@ -17,8 +17,8 @@ const client = new Client({
   ]
 });
 
-const SOURCE_CHANNEL_ID = '1388070050061221990'; // Eingangs-Channel
-const TARGET_CHANNEL_ID = '1294003170116239431'; // Zielkanal mit Buttons
+const SOURCE_CHANNEL_ID = '1388070050061221990';
+const TARGET_CHANNEL_ID = '1294003170116239431';
 
 const responseTracker = new Collection();
 
@@ -30,18 +30,18 @@ client.on('messageCreate', async (message) => {
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
   if (message.author.bot && !message.webhookId) return;
 
-  let descriptionText = '';
+  const removePrefix = (text) =>
+    text.replace(/Ehrenamt Alarmierung: FF Wiener Neustadt\s*-*\s*/gi, '').trim();
 
+  let descriptionText = '';
   if (message.content?.trim()) {
-    const rawContent = message.content.trim();
-    // Entferne "Ehrenamt Alarmierung: FF Wiener Neustadt –" vom Anfang, wenn vorhanden
-    descriptionText = rawContent.replace(/^Ehrenamt Alarmierung: FF Wiener Neustadt\s*-*\s*/i, '').trim();
+    descriptionText = removePrefix(message.content.trim());
   } else if (message.embeds.length > 0) {
     const firstEmbed = message.embeds[0];
     if (firstEmbed.title || firstEmbed.description) {
       descriptionText = [
-        firstEmbed.title ?? '',
-        firstEmbed.description ?? ''
+        firstEmbed.title ? removePrefix(firstEmbed.title) : '',
+        firstEmbed.description ? removePrefix(firstEmbed.description) : ''
       ].filter(Boolean).join(' – ');
     } else {
       descriptionText = '🔗 Nachricht enthält ein eingebettetes Element.';
@@ -53,16 +53,21 @@ client.on('messageCreate', async (message) => {
     descriptionText = '⚠️ Kein sichtbarer Nachrichtentext vorhanden.';
   }
 
+  const timestamp = new Date().toLocaleString('de-AT', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  });
+
   const embed = new EmbedBuilder()
     .setColor(0xE67E22)
     .setTitle('Ehrenamt Alarmierung: FF Wiener Neustadt')
     .setDescription(descriptionText)
     .addFields(
+      { name: '🕒 Zeit', value: timestamp, inline: false },
       { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
       { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
       { name: '🟠 Komme später', value: 'Niemand bisher', inline: true }
-    )
-    .setFooter({ text: new Date().toLocaleString('de-AT') });
+    );
 
   const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -118,6 +123,11 @@ client.on('interactionCreate', async (interaction) => {
 
   const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
     .setFields(
+      {
+        name: '🕒 Zeit',
+        value: interaction.message.embeds[0].fields.find(f => f.name === '🕒 Zeit')?.value || 'Zeit unbekannt',
+        inline: false
+      },
       {
         name: '✅ Zusagen',
         value: entry.coming.length > 0
