@@ -1,106 +1,129 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, Events } = require('discord.js');
-const axios = require('axios');
+const {
+  Client,
+  GatewayIntentBits,
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  Collection
+} = require('discord.js');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ],
-  partials: [Partials.Message, Partials.Channel, Partials.Reaction]
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers
+  ]
 });
 
-const SOURCE_CHANNEL_ID = '1388070050061221990';
-const TARGET_WEBHOOK_URL = 'https://discord.com/api/webhooks/1388070367268044810/WxsLdR9tsaV4tl7W5RMK5EDKam-jceBBEtHW74pNoQA818LSmKAZfil3wXon1V621HIx';
+const SOURCE_CHANNEL_ID = '1388070050061221990'; // Dein Eingangs-Channel
+const TARGET_CHANNEL_ID = '1294003170116239431'; // Zielkanal mit Buttons
 
-let lastMessageId = null;
-let responses = {
-  kommen: [],
-  nicht_kommen: [],
-  spaeter: []
-};
+const responseTracker = new Collection();
 
-client.once(Events.ClientReady, () => {
+client.once('ready', () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
 });
 
-client.on(Events.MessageCreate, async (message) => {
-  if (message.channel.id !== SOURCE_CHANNEL_ID || message.author.bot) return;
+client.on('messageCreate', async (message) => {
+  if (message.author.bot || message.channel.id !== SOURCE_CHANNEL_ID) return;
 
   const embed = new EmbedBuilder()
-    .setTitle('📟 Ehrenamt Alarmierung: FF Wiener Neustadt')
+    .setColor(0xE67E22)
+    .setTitle('Ehrenamt Alarmierung: FF Wiener Neustadt')
     .setDescription(message.content)
-    .setColor(0xFF6600)
-    .setFooter({ text: 'Antwortmöglichkeiten siehe unten', iconURL: client.user.displayAvatarURL() });
+    .addFields(
+      { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
+      { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
+      { name: '🟠 Komme später', value: 'Niemand bisher', inline: true }
+    )
+    .setFooter({ text: new Date().toLocaleString('de-AT') });
 
   const buttons = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId('kommen')
+      .setCustomId('come_yes')
       .setLabel('✅ Ich komme')
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
-      .setCustomId('nicht_kommen')
+      .setCustomId('come_no')
       .setLabel('❌ Ich komme nicht')
       .setStyle(ButtonStyle.Danger),
     new ButtonBuilder()
-      .setCustomId('spaeter')
-      .setLabel('🕒 Ich komme später')
-      .setStyle(ButtonStyle.Secondary)
+      .setCustomId('come_late')
+      .setLabel('🟠 Ich komme später')
+      .setStyle(ButtonStyle.Primary)
   );
 
   try {
-    const res = await axios.post(TARGET_WEBHOOK_URL, {
-      username: 'blaulichtSMS',
-      avatar_url: 'https://play-lh.googleusercontent.com/4zV9nla3sWNIe1w6egIXucVeqr0KI826kquJpKjb8ZGrzyyzjwqG6vkB5DpBjTrz1Uic',
-      embeds: [embed.toJSON()],
-      components: [buttons.toJSON()]
+    const targetChannel = await client.channels.fetch(TARGET_CHANNEL_ID);
+    const sentMessage = await targetChannel.send({ embeds: [embed], components: [buttons] });
+
+    responseTracker.set(sentMessage.id, {
+      message: sentMessage,
+      coming: [],
+      notComing: [],
+      late: []
     });
 
-    lastMessageId = res.data.id;
-    responses = { kommen: [], nicht_kommen: [], spaeter: [] };
-
-  } catch (error) {
-    console.error('❌ Fehler beim Senden:', error.response?.data || error.message);
+    console.log('📢 Alarmierung mit Buttons gesendet.');
+  } catch (err) {
+    console.error('❌ Fehler beim Senden:', err.message);
   }
 });
 
-client.on(Events.InteractionCreate, async interaction => {
+client.on('interactionCreate', async (interaction) => {
   if (!interaction.isButton()) return;
 
-  const displayName = interaction.member?.nickname || interaction.user.username;
-
-  const alreadyResponded = Object.values(responses).some(arr => arr.includes(displayName));
-  if (!alreadyResponded) {
-    if (interaction.customId === 'kommen') responses.kommen.push(displayName);
-    if (interaction.customId === 'nicht_kommen') responses.nicht_kommen.push(displayName);
-    if (interaction.customId === 'spaeter') responses.spaeter.push(displayName);
-  }
-
-  const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-    .setFields([
-      {
-        name: `✅ Ich komme (${responses.kommen.length})`,
-        value: responses.kommen.join('\n') || 'Niemand',
-        inline: true
-      },
-      {
-        name: `❌ Ich komme nicht (${responses.nicht_kommen.length})`,
-        value: responses.nicht_kommen.join('\n') || 'Niemand',
-        inline: true
-      },
-      {
-        name: `🕒 Ich komme später (${responses.spaeter.length})`,
-        value: responses.spaeter.join('\n') || 'Niemand',
-        inline: true
-      }
-    ]);
+  const entry = responseTracker.get(interaction.message.id);
+  if (!entry) return;
 
   try {
-    await interaction.update({ embeds: [newEmbed] });
+    // Anzeigenamen holen
+    const member = await interaction.guild.members.fetch(interaction.user.id);
+    const displayName = member.displayName;
+
+    // Alte Antwort entfernen
+    entry.coming = entry.coming.filter(name => name !== displayName);
+    entry.notComing = entry.notComing.filter(name => name !== displayName);
+    entry.late = entry.late.filter(name => name !== displayName);
+
+    // Neue Antwort setzen
+    if (interaction.customId === 'come_yes') {
+      entry.coming.push(displayName);
+    } else if (interaction.customId === 'come_no') {
+      entry.notComing.push(displayName);
+    } else if (interaction.customId === 'come_late') {
+      entry.late.push(displayName);
+    }
+
+    // Embed aktualisieren
+    const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+      .setFields(
+        {
+          name: '✅ Zusagen',
+          value: entry.coming.length > 0 ? entry.coming.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+          inline: true
+        },
+        {
+          name: '❌ Absagen',
+          value: entry.notComing.length > 0 ? entry.notComing.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+          inline: true
+        },
+        {
+          name: '🟠 Komme später',
+          value: entry.late.length > 0 ? entry.late.map(n => `• ${n}`).join('\n') : 'Niemand bisher',
+          inline: true
+        }
+      );
+
+    await entry.message.edit({ embeds: [newEmbed] });
+    await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
   } catch (err) {
-    console.error('❌ Fehler bei Button-Antwort:', err.message);
+    console.error('❌ Fehler bei Interaktion:', err.message);
+    await interaction.reply({ content: 'Fehler beim Speichern deiner Antwort 😢', ephemeral: true });
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_BOT_TOKEN);
