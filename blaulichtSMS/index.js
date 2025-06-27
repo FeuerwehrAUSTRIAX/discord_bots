@@ -1,3 +1,4 @@
+// bot.js
 require('dotenv').config();
 const {
   Client,
@@ -78,22 +79,10 @@ client.on('messageCreate', async (message) => {
     );
 
   const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('come_yes')
-      .setLabel('✅ Ich komme')
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId('come_no')
-      .setLabel('❌ Ich komme nicht')
-      .setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId('come_late')
-      .setLabel('🟠 Ich komme später')
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId('come_repeat')
-      .setLabel('🔁 Nachalarmieren')
-      .setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('come_yes').setLabel('✅ Ich komme').setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId('come_no').setLabel('❌ Ich komme nicht').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId('come_late').setLabel('🟠 Ich komme später').setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId('come_repeat').setLabel('🔁 Nachalarmieren').setStyle(ButtonStyle.Secondary)
   );
 
   try {
@@ -120,7 +109,6 @@ client.on('interactionCreate', async (interaction) => {
     if (!entry) return;
 
     const userId = interaction.user.id;
-
     entry.coming = entry.coming.filter(id => id !== userId);
     entry.notComing = entry.notComing.filter(id => id !== userId);
     entry.late = entry.late.filter(id => id !== userId);
@@ -140,7 +128,7 @@ client.on('interactionCreate', async (interaction) => {
         .setCustomId(`select_alarmtype_${interaction.message.id}`)
         .setPlaceholder('Alarmtyp auswählen...')
         .addOptions(
-          new StringSelectMenuOptionBuilder().setLabel('Stillalarm').setValue('Stillalarm'),
+          new StringSelectMenuOptionBuilder().setLabel('Stiller Alarm').setValue('Stiller Alarm'),
           new StringSelectMenuOptionBuilder().setLabel('Sirenenalarm').setValue('Sirenenalarm')
         );
 
@@ -177,30 +165,20 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('select_alarmtype_')) {
-    const alarmtype = interaction.values[0];
+    const selectedAlarmtype = interaction.values[0];
     const messageId = interaction.customId.split('select_alarmtype_')[1];
+    const entry = responseTracker.get(messageId);
+    if (!entry) return;
+
+    entry.selectedAlarmtype = selectedAlarmtype;
 
     const modal = new ModalBuilder()
-      .setCustomId(`nachalarmieren_modal_${alarmtype}_${messageId}`)
+      .setCustomId(`nachalarmieren_modal_${messageId}`)
       .setTitle('Nachalarmieren');
 
-    const stichwortInput = new TextInputBuilder()
-      .setCustomId('stichwort')
-      .setLabel('Stichwort')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const adresseInput = new TextInputBuilder()
-      .setCustomId('adresse')
-      .setLabel('Adresse')
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
-
-    const infoInput = new TextInputBuilder()
-      .setCustomId('info')
-      .setLabel('Weitere Infos')
-      .setStyle(TextInputStyle.Paragraph)
-      .setRequired(false);
+    const stichwortInput = new TextInputBuilder().setCustomId('stichwort').setLabel('Stichwort').setStyle(TextInputStyle.Short).setRequired(true);
+    const adresseInput = new TextInputBuilder().setCustomId('adresse').setLabel('Adresse').setStyle(TextInputStyle.Short).setRequired(true);
+    const infoInput = new TextInputBuilder().setCustomId('info').setLabel('Weitere Infos').setStyle(TextInputStyle.Paragraph).setRequired(false);
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(stichwortInput),
@@ -212,29 +190,29 @@ client.on('interactionCreate', async (interaction) => {
   }
 
   if (interaction.isModalSubmit() && interaction.customId.startsWith('nachalarmieren_modal_')) {
-    const parts = interaction.customId.split('_');
-    const alarmtype = parts[3];
-    const messageId = parts.slice(4).join('_');
+    const messageId = interaction.customId.replace('nachalarmieren_modal_', '');
+    const entry = responseTracker.get(messageId);
+    if (!entry || !entry.selectedAlarmtype) {
+      return interaction.reply({ content: '⚠️ Fehler beim Nachalarmieren (kein Alarmtyp)', ephemeral: true });
+    }
 
+    const alarmtype = entry.selectedAlarmtype;
     const stichwort = interaction.fields.getTextInputValue('stichwort');
     const adresse = interaction.fields.getTextInputValue('adresse');
     const info = interaction.fields.getTextInputValue('info');
 
-    const nachricht = `${alarmtype} für FF Wiener Neustadt: ${stichwort} WIENER NEUSTADT-OT // ${adresse} // ${info} // <@&${NACHALARM_ROLE_ID}>`;
+    const nachricht = `**${alarmtype}** für FF Wiener Neustadt: ${stichwort} WIENER NEUSTADT-OT // ${adresse} // ${info} // <@&${NACHALARM_ROLE_ID}>`;
 
     await interaction.reply({
       content: nachricht,
       allowedMentions: { parse: ['roles'] }
     });
 
-    const entry = responseTracker.get(messageId);
-    if (entry && !entry.nachalarmiert) {
+    if (!entry.nachalarmiert) {
       entry.nachalarmiert = true;
-
       const updatedButtons = ActionRowBuilder.from(entry.message.components[0]);
       const repeatButton = updatedButtons.components.find(btn => btn.data.custom_id === 'come_repeat');
       if (repeatButton) repeatButton.setDisabled(true);
-
       await entry.message.edit({ components: [updatedButtons] });
     }
   }
