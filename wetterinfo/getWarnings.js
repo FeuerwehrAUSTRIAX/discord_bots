@@ -15,7 +15,9 @@ async function getWarnings() {
   try {
     const url = 'https://warnungen.zamg.at/wsapp/api/getWarnstatus';
     const res = await axios.get(url);
-    const data = res.data; // GeoJSON FeatureCollection
+    const data = res.data;
+
+    console.log('ROHE WARNUNGSDATEN:', JSON.stringify(data, null, 2));  // Zum Debuggen
 
     const results = [];
 
@@ -24,7 +26,6 @@ async function getWarnings() {
     for (const feature of data.features) {
       const props = feature.properties;
 
-      // props.municipalityName ist der Gemeindename
       if (
         props.municipalityName &&
         relevantMunicipalities.some(m =>
@@ -37,8 +38,8 @@ async function getWarnings() {
 
           results.push({
             region: props.municipalityName,
-            event: props.type,         // Warnungsart
-            level: props.severity,     // Warnstufe
+            event: props.type,
+            level: props.severity,
             start: new Date(props.validFrom).toLocaleString('de-AT'),
             end: new Date(props.validTo).toLocaleString('de-AT'),
           });
