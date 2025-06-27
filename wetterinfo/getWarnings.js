@@ -4,20 +4,23 @@ let lastPostedWarnings = new Set();
 
 async function getWarnings() {
   try {
-    const res = await axios.get('https://www.warnungen.zamg.at/html/ogd/ogd_wetterwarnungen.json'); // <- FIXED URL!
+    const res = await axios.get('https://www.warnungen.zamg.at/html/ogd/ogd_wetterwarnungen.json'); // FIXED URL ✅
     const data = res.data;
 
     const relevantRegions = ['Wien', 'Wiener Neustadt', 'Mödling', 'Schneeberg', 'Hohe Wand'];
     const results = [];
 
     for (const entry of data) {
+      // Region passt zu deiner Liste?
       if (relevantRegions.some(r =>
         entry.regionName.toLowerCase().includes(r.toLowerCase())
       )) {
+        // Doppelte Einträge verhindern
         const key = `${entry.regionName}-${entry.event}-${entry.start}`;
         if (!lastPostedWarnings.has(key)) {
           lastPostedWarnings.add(key);
 
+          // Formatieren
           results.push({
             region: entry.regionName,
             event: entry.event,
