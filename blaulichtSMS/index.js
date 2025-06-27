@@ -27,15 +27,22 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  // Nur Nachrichten aus dem Quell-Channel verarbeiten
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
-
-  // Erlaube Webhook-Nachrichten, blockiere aber andere Bot-Nachrichten
   if (message.author.bot && !message.webhookId) return;
 
-  // Nachrichtentext prüfen (leere Inhalte vermeiden)
+  // Beschreibung intelligent wählen
   const content = message.content?.trim();
-  const descriptionText = content && content.length > 0 ? content : '⚠️ Keine Nachrichtentext vorhanden.';
+  let descriptionText = '';
+
+  if (content) {
+    descriptionText = content;
+  } else if (message.attachments.size > 0) {
+    descriptionText = '📎 Nachricht enthält einen Anhang.';
+  } else if (message.embeds.length > 0) {
+    descriptionText = '🔗 Nachricht enthält ein eingebettetes Element.';
+  } else {
+    descriptionText = '⚠️ Kein sichtbarer Nachrichtentext vorhanden.';
+  }
 
   const embed = new EmbedBuilder()
     .setColor(0xE67E22)
@@ -88,12 +95,12 @@ client.on('interactionCreate', async (interaction) => {
 
   const userId = interaction.user.id;
 
-  // Alte Reaktionen des Users entfernen
+  // Vorherige Antwort entfernen
   entry.coming = entry.coming.filter(id => id !== userId);
   entry.notComing = entry.notComing.filter(id => id !== userId);
   entry.late = entry.late.filter(id => id !== userId);
 
-  // Neue Reaktion speichern
+  // Neue Antwort speichern
   if (interaction.customId === 'come_yes') {
     entry.coming.push(userId);
   } else if (interaction.customId === 'come_no') {
@@ -102,7 +109,6 @@ client.on('interactionCreate', async (interaction) => {
     entry.late.push(userId);
   }
 
-  // Embed aktualisieren
   const newEmbed = EmbedBuilder.from(interaction.message.embeds[0])
     .setFields(
       {
