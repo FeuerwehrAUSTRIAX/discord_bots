@@ -1,20 +1,24 @@
 const { EmbedBuilder } = require('discord.js');
 
-function createWeatherEmbed(cityName, condition, temp, feelsLike, wind, client) {
+function createWarningEmbed(region, event, level, start, end) {
+  let color = 0xFFA500; // default Orange
+
+  if (level.toLowerCase() === 'rot') {
+    color = 0xFF0000; // Rot
+  } else if (level.toLowerCase() === 'gelb') {
+    color = 0xFFFF00; // Gelb
+  }
+
   return new EmbedBuilder()
-    .setTitle(`📍 Wetter für ${cityName}`)
-    .setDescription(
-      `🌤️ ${condition}, ${temp}°C (gefühlt ${feelsLike}°C)\n` +
-      `💨 Wind: ${wind} km/h\n` +
-      `❌ Keine aktuellen Warnungen`
+    .setTitle(`🚨 Unwetterwarnung für ${region}`)
+    .addFields(
+      { name: 'Warnung', value: event, inline: true },
+      { name: 'Stufe', value: level, inline: true },
+      { name: 'Gültig von', value: start, inline: false },
+      { name: 'Gültig bis', value: end, inline: false }
     )
-    .setColor(0x1D82B6)
-    .setFooter({
-      text: 'GeoSphere Bot',
-      iconURL: client.user.displayAvatarURL(),
-    })
+    .setColor(color)
     .setTimestamp();
 }
 
-module.exports = createWeatherEmbed;
-
+module.exports = createWarningEmbed;
