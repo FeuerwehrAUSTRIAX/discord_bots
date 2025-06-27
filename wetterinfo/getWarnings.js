@@ -11,9 +11,12 @@ async function getWarnings() {
     const results = [];
 
     for (const entry of data) {
-      if (relevantRegions.some(r =>
-        entry.regionName.toLowerCase().includes(r.toLowerCase())
-      )) {
+      if (
+        entry.regionName && // Prüfen, ob regionName existiert
+        relevantRegions.some(r =>
+          entry.regionName.toLowerCase().includes(r.toLowerCase())
+        )
+      ) {
         const key = `${entry.regionName}-${entry.event}-${entry.start}`;
         if (!lastPostedWarnings.has(key)) {
           lastPostedWarnings.add(key);
