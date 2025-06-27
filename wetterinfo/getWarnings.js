@@ -1,54 +1,44 @@
 const axios = require('axios');
 
-// Gemeinden als Codes (oder Namen, je nach Datenquelle)
-const relevantGemeinden = [
-  "10101", // Beispiel: Wien
-  "10201", // Wiener Neustadt
-  "10301", // Mödling
-  "10401", // Waidhofen an der Ybbs
-  // Füge hier weitere Codes hinzu
-];
-
-// Hilfsfunktion, um Unix-Timestamp in lesbares Datum zu wandeln
-function formatTimestamp(unixTimestamp) {
-  return new Date(unixTimestamp * 1000).toLocaleString('de-AT');
-}
+let lastPostedWarnings = new Set();
 
 async function getWarnings() {
   try {
-    const url = 'https://warnungen.zamg.at/wsapp/api/getWarnstatus';
-    const res = await axios.get(url);
+    const lon = 16.3738;
+    const lat = 48.2082;
+    const url = `https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=${lon}&lat=${lat}&lang=de`;
+    const res = await axios.get(url, {
+      headers: {
+        accept: 'application/json'
+      }
+    });
     const data = res.data;
-
-    if (!data || data.type !== 'FeatureCollection' || !Array.isArray(data.features)) {
-      console.error('Unerwartetes Datenformat bei Warnungen');
-      return [];
-    }
 
     const results = [];
 
+    if (!data || !data.features) return results;
+
     for (const feature of data.features) {
       const props = feature.properties;
-      if (!props || !props.gemeinden || !Array.isArray(props.gemeinden)) continue;
 
-      // Prüfe, ob eine der Gemeinden relevant ist
-      const isRelevant = props.gemeinden.some(g => relevantGemeinden.includes(g));
-      if (!isRelevant) continue;
+      const key = `${props.warnid}-${props.wtype}-${props.start}`;
+      if (!lastPostedWarnings.has(key)) {
+        lastPostedWarnings.add(key);
 
-      results.push({
-        warnid: props.warnid,
-        type: props.wtype,       // Warnungstyp (z.B. 5 = Gewitter)
-        level: props.wlevel,     // Warnstufe
-        start: formatTimestamp(props.start),
-        end: formatTimestamp(props.end),
-        gemeinden: props.gemeinden,
-      });
+        results.push({
+          region: props.region || 'Wien',
+          event: props.wtype,
+          level: props.wlevel,
+          start: new Date(props.start * 1000).toLocaleString('de-AT'),
+          end: new Date(props.end * 1000).toLocaleString('de-AT'),
+          description: props.description || ''
+        });
+      }
     }
 
     return results;
-
-  } catch (error) {
-    console.error('Fehler beim Abrufen der Warnungen:', error.message);
+  } catch (err) {
+    console.error('Fehler beim Abrufen der Warnungen:', err.message);
     return [];
   }
 }
