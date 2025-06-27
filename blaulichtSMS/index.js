@@ -6,7 +6,12 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Collection
+  Collection,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  StringSelectMenuBuilder,
+  StringSelectMenuOptionBuilder
 } = require('discord.js');
 
 const client = new Client({
@@ -19,6 +24,7 @@ const client = new Client({
 
 const SOURCE_CHANNEL_ID = '1388070050061221990';
 const TARGET_CHANNEL_ID = '1294003170116239431';
+const NACHALARM_ROLE_ID = '1293999568991555667';
 
 const responseTracker = new Collection();
 
@@ -30,11 +36,10 @@ client.on('messageCreate', async (message) => {
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
   if (message.author.bot && !message.webhookId) return;
 
-  // Entferne Standardprefix & überflüssige Zeichen
   const removePrefix = (text) =>
     text
       .replace(/Ehrenamt Alarmierung: FF Wiener Neustadt\s*-*\s*/gi, '')
-      .replace(/^(\*{1,2}\s*[-–]*\s*)+/g, '') // entfernt führende ** oder –
+      .replace(/^(\*{1,2}\s*[-–]*\s*)+/g, '')
       .trim();
 
   let descriptionText = '';
@@ -65,7 +70,7 @@ client.on('messageCreate', async (message) => {
   const embed = new EmbedBuilder()
     .setColor(0xE67E22)
     .setTitle('Ehrenamt Alarmierung: FF Wiener Neustadt')
-    .setDescription(`${descriptionText}\n\n${timestamp}`) // Datum in Beschreibung
+    .setDescription(`${descriptionText}\n\n${timestamp}`)
     .addFields(
       { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
       { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
@@ -84,7 +89,11 @@ client.on('messageCreate', async (message) => {
     new ButtonBuilder()
       .setCustomId('come_late')
       .setLabel('🟠 Ich komme später')
-      .setStyle(ButtonStyle.Primary)
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId('come_repeat')
+      .setLabel('🔁 Nachalarmieren')
+      .setStyle(ButtonStyle.Secondary)
   );
 
   try {
@@ -95,7 +104,8 @@ client.on('messageCreate', async (message) => {
       message: sentMessage,
       coming: [],
       notComing: [],
-      late: []
+      late: [],
+      nachalarmiert: false
     });
 
     console.log('📢 Alarmierung mit Buttons gesendet.');
@@ -105,54 +115,129 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
+  if (interaction.isButton()) {
+    const entry = responseTracker.get(interaction.message.id);
+    if (!entry) return;
 
-  const entry = responseTracker.get(interaction.message.id);
-  if (!entry) return;
+    const userId = interaction.user.id;
 
-  const userId = interaction.user.id;
+    entry.coming = entry.coming.filter(id => id !== userId);
+    entry.notComing = entry.notComing.filter(id => id !== userId);
+    entry.late = entry.late.filter(id => id !== userId);
 
-  entry.coming = entry.coming.filter(id => id !== userId);
-  entry.notComing = entry.notComing.filter(id => id !== userId);
-  entry.late = entry.late.filter(id => id !== userId);
+    if (interaction.customId === 'come_yes') {
+      entry.coming.push(userId);
+    } else if (interaction.customId === 'come_no') {
+      entry.notComing.push(userId);
+    } else if (interaction.customId === 'come_late') {
+      entry.late.push(userId);
+    } else if (interaction.customId === 'come_repeat') {
+      if (entry.nachalarmiert) {
+        return interaction.reply({ content: '⚠️ Es wurde bereits nachalarmiert.', ephemeral: true });
+      }
 
-  if (interaction.customId === 'come_yes') {
-    entry.coming.push(userId);
-  } else if (interaction.customId === 'come_no') {
-    entry.notComing.push(userId);
-  } else if (interaction.customId === 'come_late') {
-    entry.late.push(userId);
-  }
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`select_alarmtype_${interaction.message.id}`)
+        .setPlaceholder('Alarmtyp auswählen...')
+        .addOptions(
+          new StringSelectMenuOptionBuilder().setLabel('Stillalarm').setValue('Stillalarm'),
+          new StringSelectMenuOptionBuilder().setLabel('Sirenenalarm').setValue('Sirenenalarm')
+        );
 
-  const originalEmbed = interaction.message.embeds[0];
+      const row = new ActionRowBuilder().addComponents(selectMenu);
 
-  const newEmbed = EmbedBuilder.from(originalEmbed)
-    .setFields(
+      return interaction.reply({
+        content: 'Bitte wähle den Alarmtyp:',
+        components: [row],
+        ephemeral: true
+      });
+    }
+
+    const originalEmbed = interaction.message.embeds[0];
+    const newEmbed = EmbedBuilder.from(originalEmbed).setFields(
       {
         name: '✅ Zusagen',
-        value: entry.coming.length > 0
-          ? entry.coming.map(id => `• <@${id}>`).join('\n')
-          : 'Niemand bisher',
+        value: entry.coming.length > 0 ? entry.coming.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher',
         inline: true
       },
       {
         name: '❌ Absagen',
-        value: entry.notComing.length > 0
-          ? entry.notComing.map(id => `• <@${id}>`).join('\n')
-          : 'Niemand bisher',
+        value: entry.notComing.length > 0 ? entry.notComing.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher',
         inline: true
       },
       {
         name: '🟠 Komme später',
-        value: entry.late.length > 0
-          ? entry.late.map(id => `• <@${id}>`).join('\n')
-          : 'Niemand bisher',
+        value: entry.late.length > 0 ? entry.late.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher',
         inline: true
       }
     );
 
-  await entry.message.edit({ embeds: [newEmbed] });
-  await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
+    await entry.message.edit({ embeds: [newEmbed] });
+    await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
+  }
+
+  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('select_alarmtype_')) {
+    const alarmtype = interaction.values[0];
+    const messageId = interaction.customId.split('select_alarmtype_')[1];
+
+    const modal = new ModalBuilder()
+      .setCustomId(`nachalarmieren_modal_${alarmtype}_${messageId}`)
+      .setTitle('Nachalarmieren');
+
+    const stichwortInput = new TextInputBuilder()
+      .setCustomId('stichwort')
+      .setLabel('Stichwort')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const adresseInput = new TextInputBuilder()
+      .setCustomId('adresse')
+      .setLabel('Adresse')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const infoInput = new TextInputBuilder()
+      .setCustomId('info')
+      .setLabel('Weitere Infos')
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(stichwortInput),
+      new ActionRowBuilder().addComponents(adresseInput),
+      new ActionRowBuilder().addComponents(infoInput)
+    );
+
+    await interaction.showModal(modal);
+  }
+
+  if (interaction.isModalSubmit() && interaction.customId.startsWith('nachalarmieren_modal_')) {
+    const parts = interaction.customId.split('_');
+    const alarmtype = parts[3];
+    const messageId = parts.slice(4).join('_');
+
+    const stichwort = interaction.fields.getTextInputValue('stichwort');
+    const adresse = interaction.fields.getTextInputValue('adresse');
+    const info = interaction.fields.getTextInputValue('info');
+
+    const nachricht = `${alarmtype} für FF Wiener Neustadt: ${stichwort} WIENER NEUSTADT-OT // ${adresse} // ${info} // <@&${NACHALARM_ROLE_ID}>`;
+
+    await interaction.reply({
+      content: nachricht,
+      allowedMentions: { parse: ['roles'] }
+    });
+
+    const entry = responseTracker.get(messageId);
+    if (entry && !entry.nachalarmiert) {
+      entry.nachalarmiert = true;
+
+      const updatedButtons = ActionRowBuilder.from(entry.message.components[0]);
+      const repeatButton = updatedButtons.components.find(btn => btn.data.custom_id === 'come_repeat');
+      if (repeatButton) repeatButton.setDisabled(true);
+
+      await entry.message.edit({ components: [updatedButtons] });
+    }
+  }
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
