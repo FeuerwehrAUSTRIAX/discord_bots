@@ -27,7 +27,11 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-  if (message.author.bot || message.channel.id !== SOURCE_CHANNEL_ID) return;
+  // Nur Nachrichten aus dem Quell-Channel verarbeiten
+  if (message.channel.id !== SOURCE_CHANNEL_ID) return;
+
+  // Erlaube Webhook-Nachrichten, blockiere aber andere Bot-Nachrichten
+  if (message.author.bot && !message.webhookId) return;
 
   const embed = new EmbedBuilder()
     .setColor(0xE67E22)
