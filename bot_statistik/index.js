@@ -1,4 +1,5 @@
 require('dotenv').config();
+require('./keepAlive.js'); // Ping-Webserver für UptimeRobot
 
 const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 
@@ -7,7 +8,7 @@ const client = new Client({
 });
 
 client.once('ready', async () => {
-  console.log(✅ Bot gestartet als ${client.user.tag});
+  console.log(`✅ Bot gestartet als ${client.user.tag}`);
 
   const guild = await client.guilds.fetch('1151964334977712141');
   await guild.members.fetch();
@@ -34,12 +35,12 @@ client.once('ready', async () => {
 
       if (!existing) {
         existing = await guild.channels.create({
-          name: ${role.name}: wird geladen...,
+          name: `${role.name}: wird geladen...`,
           type: ChannelType.GuildVoice,
           parent: categoryId,
           position: 0,
         });
-        console.log(🆕 Erstellt: ${existing.name});
+        console.log(`🆕 Erstellt: ${existing.name}`);
       }
 
       voiceChannels[role.name] = existing;
@@ -49,7 +50,7 @@ client.once('ready', async () => {
   const updateCounts = async () => {
     try {
       await guild.members.fetch();
-      console.log(🔄 Update – ${new Date().toLocaleString()});
+      console.log(`🔄 Update – ${new Date().toLocaleString()}`);
 
       for (const role of rolesOrdered) {
         const r = guild.roles.cache.get(role.id);
@@ -57,8 +58,8 @@ client.once('ready', async () => {
         const channel = voiceChannels[role.name];
 
         if (channel) {
-          await channel.setName(${role.name}: ${count});
-          console.log(➡️ ${role.name}: ${count});
+          await channel.setName(`${role.name}: ${count}`);
+          console.log(`➡️ ${role.name}: ${count}`);
         }
       }
     } catch (err) {
