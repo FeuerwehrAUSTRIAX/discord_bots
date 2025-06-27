@@ -3,6 +3,7 @@ const { Client, GatewayIntentBits } = require('discord.js');
 const getLiveWeather = require('./getLiveWeather');
 const getWarnings = require('./getWarnings');
 const createWeatherEmbed = require('./createWeatherEmbed');
+const createWarningEmbed = require('./createWarningEmbed');
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
@@ -55,11 +56,14 @@ async function postNewWarnings() {
   const warnings = await getWarnings();
 
   for (const warn of warnings) {
-    const msg = `🚨 **Unwetterwarnung für das Gebiet ${warn.region}**\n` +
-                `🔴 **Stufe:** ${warn.level}\n` +
-                `🌩️ **${warn.event.toUpperCase()}**\n` +
-                `🕒 Gültig: ${warn.start} – ${warn.end}`;
-    await channel.send(msg);
+    const embed = createWarningEmbed(
+      warn.region,
+      warn.event,
+      warn.level,
+      warn.start,
+      warn.end
+    );
+    await channel.send({ embeds: [embed] });
   }
 }
 
