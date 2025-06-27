@@ -4,7 +4,7 @@ let lastPostedWarnings = new Set();
 
 async function getWarnings() {
   try {
-    const res = await axios.get('https://www.warnungen.zamg.at/html/ogd/ogd_wetterwarnungen.json');
+    const res = await axios.get('https://warnungen.zamg.at/html/ogd/ogd_wetterwarnungen.json');
     const data = res.data;
 
     const relevantRegions = ['Wien', 'Wiener Neustadt', 'Mödling', 'Schneeberg', 'Hohe Wand'];
@@ -31,7 +31,7 @@ async function getWarnings() {
 
     return results;
   } catch (err) {
-    console.error('❌ Fehler beim Abrufen der Warnungen:', err.message);
+    console.error('Fehler beim Abrufen der Warnungen:', err.message);
     return [];
   }
 }
