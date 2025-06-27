@@ -79,7 +79,9 @@ client.on('interactionCreate', async (interaction) => {
   const entry = responseTracker.get(interaction.message.id);
   if (!entry) return;
 
-  const username = interaction.member?.nickname || interaction.user.username;
+  const nickname = interaction.member?.nickname || interaction.user.username;
+  const displayName = `[${nickname}](https://discord.com/users/${interaction.user.id})`;
+
 
   // Entferne alle vorherigen Antworten
   entry.coming = entry.coming.filter(name => name !== username);
