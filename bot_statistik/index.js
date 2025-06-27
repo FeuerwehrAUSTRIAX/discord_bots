@@ -1,5 +1,7 @@
 // index.js
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const {
   Client,
   GatewayIntentBits,
@@ -20,12 +22,32 @@ const client = new Client({
   partials: [Partials.Channel]
 });
 
-const abmeldungen = [];
+const abmeldungenFile = path.join(__dirname, 'abmeldungen.json');
+let abmeldungen = [];
+
+function loadAbmeldungen() {
+  if (fs.existsSync(abmeldungenFile)) {
+    try {
+      const data = fs.readFileSync(abmeldungenFile, 'utf-8');
+      abmeldungen = JSON.parse(data).map(entry => ({
+        ...entry,
+        endDate: new Date(entry.endDate)
+      }));
+    } catch (err) {
+      console.error('❌ Fehler beim Laden der Abmeldungen:', err);
+    }
+  }
+}
+
+function saveAbmeldungen() {
+  fs.writeFileSync(abmeldungenFile, JSON.stringify(abmeldungen, null, 2));
+}
+
+loadAbmeldungen();
 
 client.once('ready', async () => {
   console.log(`✅ Bot gestartet als ${client.user.tag}`);
 
-  // === Rollenstatistik ===
   const guild = await client.guilds.fetch('1151964334977712141');
   await guild.members.fetch();
 
@@ -40,7 +62,6 @@ client.once('ready', async () => {
   const categoryId = '1384578209722404884';
   const voiceChannels = {};
 
-  // Zusatz: Channel für Zeitstempel ganz oben erstellen
   let timestampChannel = guild.channels.cache.find(
     (ch) =>
       ch.type === ChannelType.GuildVoice &&
@@ -88,7 +109,6 @@ client.once('ready', async () => {
       const timestamp = now.toLocaleString('de-DE', { timeZone: 'Europe/Vienna' });
       console.log(`🔄 Update – ${timestamp}`);
 
-      // Aktualisiere Zeitstempel
       if (timestampChannel) {
         await timestampChannel.setName(`Letztes Update: ${timestamp}`);
       }
@@ -112,7 +132,6 @@ client.once('ready', async () => {
   await updateCounts();
   setInterval(updateCounts, 5 * 60 * 1000);
 
-  // === Abmeldungssystem ===
   const abmeldeChannel = await client.channels.fetch('1294002165152481432');
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -121,8 +140,14 @@ client.once('ready', async () => {
       .setStyle(ButtonStyle.Primary)
   );
 
+  const abmeldeEmbed = new EmbedBuilder()
+    .setTitle('📋 Abmeldung vom Dienst')
+    .setDescription('Klicke unten, um dich abzumelden:')
+    .setColor(0x5865F2)
+    .setFooter({ text: 'Nur autorisierte Mitglieder können sich abmelden.' });
+
   const message = await abmeldeChannel.send({
-    content: '📋 **Abmeldung vom Dienst**\nKlicke unten, um dich abzumelden:',
+    embeds: [abmeldeEmbed],
     components: [row]
   });
   await message.pin();
@@ -188,6 +213,8 @@ client.on(Events.InteractionCreate, async interaction => {
       endDate: endDate
     });
 
+    saveAbmeldungen();
+
     await interaction.reply({ content: '✅ Deine Abmeldung wurde gespeichert.', ephemeral: true });
   }
 });
@@ -207,6 +234,7 @@ async function checkExpiredAbmeldungen() {
         const msg = await channel.messages.fetch(abm.messageId);
         await msg.delete();
         abmeldungen.splice(abmeldungen.indexOf(abm), 1);
+        saveAbmeldungen();
       } catch (err) {
         console.error('Fehler beim Löschen:', err);
       }
