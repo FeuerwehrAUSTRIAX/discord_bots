@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const getWarnings = require('./getWarnings');
 
-const TOKEN = process.env.BOT_TOKEN; // Dein Bot-Token aus .env
+const TOKEN = process.env.BOT_TOKEN_WETTER; // Dein Bot-Token aus .env
 const UNWETTER_CHANNEL_ID = '1388158584575098900';
 
 const client = new Client({
