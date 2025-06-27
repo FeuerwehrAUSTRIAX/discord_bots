@@ -79,7 +79,7 @@ client.on('interactionCreate', async (interaction) => {
   const entry = responseTracker.get(interaction.message.id);
   if (!entry) return;
 
-  const username = interaction.user.username;
+  const username = interaction.member?.nickname || interaction.user.username;
 
   // Entferne alle vorherigen Antworten
   entry.coming = entry.coming.filter(name => name !== username);
