@@ -30,11 +30,12 @@ client.on('messageCreate', async (message) => {
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
   if (message.author.bot && !message.webhookId) return;
 
-  // 🔍 Smarte Inhaltsauswertung
   let descriptionText = '';
 
   if (message.content?.trim()) {
-    descriptionText = message.content.trim();
+    const rawContent = message.content.trim();
+    // Entferne "Ehrenamt Alarmierung: FF Wiener Neustadt –" vom Anfang, wenn vorhanden
+    descriptionText = rawContent.replace(/^Ehrenamt Alarmierung: FF Wiener Neustadt\s*-*\s*/i, '').trim();
   } else if (message.embeds.length > 0) {
     const firstEmbed = message.embeds[0];
     if (firstEmbed.title || firstEmbed.description) {
@@ -103,12 +104,10 @@ client.on('interactionCreate', async (interaction) => {
 
   const userId = interaction.user.id;
 
-  // Vorherige Antwort entfernen
   entry.coming = entry.coming.filter(id => id !== userId);
   entry.notComing = entry.notComing.filter(id => id !== userId);
   entry.late = entry.late.filter(id => id !== userId);
 
-  // Neue Antwort speichern
   if (interaction.customId === 'come_yes') {
     entry.coming.push(userId);
   } else if (interaction.customId === 'come_no') {
