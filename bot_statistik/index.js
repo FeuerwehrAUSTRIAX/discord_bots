@@ -1,5 +1,4 @@
 require('dotenv').config();
-require('./keepAlive.js'); // Ping-Webserver für UptimeRobot
 
 const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
 
