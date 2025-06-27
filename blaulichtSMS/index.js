@@ -237,6 +237,12 @@ client.on('interactionCreate', async (interaction) => {
     const repeatButton = updatedButtons.components.find(btn => btn.data.custom_id === 'come_repeat');
     if (repeatButton) repeatButton.setDisabled(true);
     await entry.message.edit({ components: [updatedButtons] });
+
+    // ✅ Wichtig: Modal-Interaktion beantworten, damit kein Fehler angezeigt wird
+    await interaction.reply({
+      content: '✅ Nachalarmierung erfolgreich gesendet.',
+      ephemeral: true
+    });
   }
 });
 
