@@ -3,7 +3,8 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { DateTime } = require('luxon');
 const fetch = require('node-fetch');
 
-// Orte mit ZAMG-API-URLs (Deutsch)
+// ------------- Konfiguration -------------
+const CHANNEL_ID = process.env.CHANNEL_ID;
 const locations = [
   { name: 'Wiener Neustadt', url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.2500&lat=47.8000&lang=de' },
   { name: 'Mödling',         url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.28921&lat=48.08605&lang=de' },
@@ -11,15 +12,31 @@ const locations = [
   { name: 'Wien',            url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.37250&lat=48.20833&lang=de' }
 ];
 
-const client = new Client({ intents: [ GatewayIntentBits.Guilds ] });
-const CHANNEL_ID = process.env.CHANNEL_ID;
+// ------------- Helfer: lange Texte splitten -------------
+function splitField(name, text) {
+  const max = 1024;
+  const parts = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    let end = cursor + max;
+    if (end < text.length) {
+      const lb = text.lastIndexOf('\n', end);
+      if (lb > cursor) end = lb;
+    } else {
+      end = text.length;
+    }
+    parts.push({ name, value: text.slice(cursor, end) });
+    cursor = end;
+  }
+  return parts;
+}
 
-// 1) Warnungen abfragen
+// ------------- Warnungen abholen -------------
 async function fetchWarnings() {
-  const result = [];
+  const out = [];
   for (const loc of locations) {
     try {
-      const res = await fetch(loc.url);
+      const res  = await fetch(loc.url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const raw = Array.isArray(data.warnings)
@@ -30,52 +47,50 @@ async function fetchWarnings() {
       const warns = raw
         .filter(w => w.type === 'Warning')
         .map(w => w.properties);
-      result.push({ location: loc.name, warns });
-    } catch (e) {
-      result.push({ location: loc.name, error: e.message });
+      out.push({ location: loc.name, warns });
+    } catch (err) {
+      out.push({ location: loc.name, error: err.message });
     }
   }
-  return result;
+  return out;
 }
 
-// 2) Embed bauen
+// ------------- Embed bauen -------------
 function makeEmbed(location, warns, now) {
-  // höchste Warnstufe
   const maxStufe = Math.max(...warns.map(w => Number(w.warnstufeid)));
   const colors   = { 1: 0xFFFF00, 2: 0xFFA500, 3: 0xFF0000, 4: 0x8A2BE2 };
+  const color    = colors[maxStufe] ?? 0x808080;
 
   const embed = new EmbedBuilder()
     .setTitle(`⚠️ Warnungen für ${location}`)
-    .setColor(colors[maxStufe] ?? 0x808080)
+    .setColor(color)
     .setFooter({ text: `Stand: ${now.toFormat('dd.MM.yyyy')}` });
 
   for (const w of warns) {
-    const begin = DateTime
-      .fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
-      .toFormat('dd.MM.yyyy HH:mm');
-    const end = DateTime
-      .fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
-      .toFormat('dd.MM.yyyy HH:mm');
+    const begin = DateTime.fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
+                  .toFormat('dd.MM.yyyy HH:mm');
+    const end   = DateTime.fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
+                  .toFormat('dd.MM.yyyy HH:mm');
 
-    let description =
-      `• **Beginn:** ${begin} Uhr\n` +
-      `• **Ende:**   ${end} Uhr\n` +
-      `• **Beschreibung:** ${w.text}`;
+    // Übersicht
+    const overview =
+      `• **Warnstufe:** ${w.warnstufeid}\n` +
+      `• **Beginn:**     ${begin} Uhr\n` +
+      `• **Ende:**       ${end} Uhr\n\n` +
+      `**Beschreibung:**\n${w.text}`;
+    embed.addFields({ name: '🔔 Übersicht', value: overview });
 
+    // Nur Auswirkungen
     if (w.auswirkungen) {
-      description += `\n\n**Auswirkungen:**\n${w.auswirkungen}`;
+      splitField('⚠️ Auswirkungen', w.auswirkungen)
+        .forEach(f => embed.addFields(f));
     }
-    if (w.empfehlungen) {
-      description += `\n\n**Empfehlungen:**\n${w.empfehlungen}`;
-    }
-
-    embed.addFields({ name: `Warnstufe ${w.warnstufeid}`, value: description });
   }
 
   return embed;
 }
 
-// 3) Nur aktive Warnungen posten
+// ------------- Nachrichten senden -------------
 async function postWarnings() {
   const channel = await client.channels.fetch(CHANNEL_ID);
   const now     = DateTime.now().setZone('Europe/Vienna');
@@ -85,8 +100,8 @@ async function postWarnings() {
     if (entry.error) continue;
     const active = entry.warns.filter(w => {
       const b = DateTime.fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' });
-      const t = DateTime.fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' });
-      return b <= now && now <= t;
+      const e = DateTime.fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' });
+      return b <= now && now <= e;
     });
     if (active.length === 0) continue;
     const embed = makeEmbed(entry.location, active, now);
@@ -94,11 +109,11 @@ async function postWarnings() {
   }
 }
 
-// 4) Bot starten
+// ------------- Bot-Setup -------------
+const client = new Client({ intents: [ GatewayIntentBits.Guilds ] });
 client.once('ready', () => {
   console.log(`🚀 Eingeloggt als ${client.user.tag}`);
   postWarnings();
-  setInterval(postWarnings, 15 * 60 * 1000); // alle 15 Minuten
+  setInterval(postWarnings, 15 * 60 * 1000);
 });
-
 client.login(process.env.DISCORD_TOKEN);
