@@ -12,9 +12,12 @@ const locations = [
   { name: 'Wien',            url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.37250&lat=48.20833&lang=de' }
 ];
 
-// Hilfsfunktion: in Zeilen aufsplitten
+// Hilfsfunktion: Text in Zeilen splitten und führende *, -, • etc. entfernen
 function splitLines(text) {
-  return text.split('\n').map(l => l.trim()).filter(Boolean);
+  return text
+    .split('\n')
+    .map(line => line.replace(/^[\*\-\•\s]+/, '').trim())
+    .filter(Boolean);
 }
 
 // 1) Warnungen abfragen
@@ -39,7 +42,7 @@ async function fetchWarnings() {
   return out;
 }
 
-// 2) Embed bauen
+// 2) Embed bauen mit zweispaltigen Auswirkungen
 function makeEmbed(location, warns, now) {
   const maxStufe = Math.max(...warns.map(w => Number(w.warnstufeid)));
   const colors   = { 1: 0xFFFF00, 2: 0xFFA500, 3: 0xFF0000, 4: 0x8A2BE2 };
@@ -50,10 +53,12 @@ function makeEmbed(location, warns, now) {
 
   for (const w of warns) {
     // Zeiten formatieren
-    const begin = DateTime.fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
-                          .toFormat('dd.MM.yyyy HH:mm');
-    const end = DateTime.fromFormat(w.end, 'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
-                        .toFormat('dd.MM.yyyy HH:mm');
+    const begin = DateTime
+      .fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
+      .toFormat('dd.MM.yyyy HH:mm');
+    const end = DateTime
+      .fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' })
+      .toFormat('dd.MM.yyyy HH:mm');
 
     // Inline-Übersicht
     embed.addFields(
@@ -68,7 +73,7 @@ function makeEmbed(location, warns, now) {
       value: w.text
     });
 
-    // Auswirkungen zweispaltig
+    // Auswirkungen zweispaltig, ganz ohne Sternchen
     if (w.auswirkungen) {
       const lines = splitLines(w.auswirkungen);
       const half  = Math.ceil(lines.length / 2);
@@ -103,7 +108,7 @@ async function postWarnings() {
   }
 }
 
-// 4) Bot starten
+// 4) Bot initialisieren
 const client = new Client({ intents: [ GatewayIntentBits.Guilds ] });
 client.once('ready', () => {
   console.log(`🚀 Eingeloggt als ${client.user.tag}`);
