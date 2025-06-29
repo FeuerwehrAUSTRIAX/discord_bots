@@ -1,9 +1,10 @@
 // index.js
 require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
+const { DateTime } = require('luxon');
 const fetch = require('node-fetch');
 
-// Deine vier Orte und ihre ZAMG-API-URLs
+// Deine vier Orte mit API-URLs
 const locations = [
   { name: 'Wiener Neustadt', url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.2500&lat=47.8000&lang=en' },
   { name: 'Mödling',         url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.28921&lat=48.08605&lang=en' },
@@ -12,9 +13,9 @@ const locations = [
 ];
 
 const client = new Client({ intents: [ GatewayIntentBits.Guilds ] });
-const CHANNEL_ID = process.env.CHANNEL_ID;
+const CHANNEL_ID = process.env.CHANNEL_ID; // z.B. "1388158584575098900"
 
-// 1. WARNUNGEN ABFRAGEN
+// 1) Warnungen holen
 async function fetchWarnings() {
   const out = [];
   for (const loc of locations) {
@@ -41,60 +42,63 @@ async function fetchWarnings() {
   return out;
 }
 
-// 2. EMBED ERSTELLEN (mit Farbe & deutschem Datum für Wien)
-function makeEmbed(location, warns) {
-  // höchste Warnstufe ermitteln (als Zahl)
+// 2) Embed bauen
+function makeEmbed(location, warns, now) {
+  // höchste Warnstufe der aktuellen Warnungen
   const maxStufe = Math.max(...warns.map(w => Number(w.warnstufeid)));
 
-  // Farbzuweisung: 1=Gelb, 2=Orange, 3=Rot, 4=Violett, sonst Grau
+  // Farbzuordnung
   const colorMap = {
-    1: 0xFFFF00,
-    2: 0xFFA500,
-    3: 0xFF0000,
-    4: 0x8A2BE2
+    1: 0xFFFF00,  // Gelb
+    2: 0xFFA500,  // Orange
+    3: 0xFF0000,  // Rot
+    4: 0x8A2BE2   // Violett
   };
-
-  // aktuelles Datum in Deutsch, Zeitzone Wien
-  const heute = new Date().toLocaleDateString('de-AT', {
-    timeZone: 'Europe/Vienna',
-    weekday: 'long',
-    year:    'numeric',
-    month:   'long',
-    day:     'numeric'
-  });
 
   const embed = new EmbedBuilder()
     .setTitle(`⚠️ Warnungen für ${location}`)
     .setColor(colorMap[maxStufe] ?? 0x808080)
-    .setFooter({ text: `Stand: ${heute}` });
+    .setFooter({ text: `Stand: ${now.toLocaleString(DateTime.DATE_FULL)}` });
 
   for (const w of warns) {
     embed.addFields({
       name:  `Warn-ID: ${w.warnid} | Warnstufe: ${w.warnstufeid}`,
-      value: `Beginn: **${w.begin}**\nEnde:   **${w.end}**\n${w.text}`,
+      value: `Beginn: **${w.begin}**  \n` +
+             `Ende:   **${w.end}**  \n\n` +
+             `${w.text.replace(/ can be expected\.$/, ' ist zu erwarten.')}`,
       inline: false
     });
   }
+
   return embed;
 }
 
-// 3. NUR BEI VORHANDENEN WARNUNGEN POSTEN
+// 3) Nur aktuelle Warnungen posten
 async function postWarnings() {
-  const ch   = await client.channels.fetch(CHANNEL_ID);
-  const data = await fetchWarnings();
+  const channel = await client.channels.fetch(CHANNEL_ID);
+  const data    = await fetchWarnings();
+  const now     = DateTime.now().setZone('Europe/Vienna');
 
-  for (const e of data) {
-    if (e.error) {
-      console.error(`⚠️ ${e.location} Fehler:`, e.error);
+  for (const entry of data) {
+    if (entry.error) {
+      console.error(`⚠️ ${entry.location} Fehler:`, entry.error);
       continue;
     }
-    if (e.warns.length === 0) continue;
-    const embed = makeEmbed(e.location, e.warns);
-    await ch.send({ embeds: [embed] });
+
+    // filter nur die Warnungen, die gerade aktiv sind
+    const active = entry.warns.filter(w => {
+      const begin = DateTime.fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' });
+      const end   = DateTime.fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone: 'Europe/Vienna' });
+      return begin <= now && now <= end;
+    });
+
+    if (active.length === 0) continue;
+    const embed = makeEmbed(entry.location, active, now);
+    await channel.send({ embeds: [embed] });
   }
 }
 
-// 4. BOT START & INTERVALL
+// 4) Bot starten & Intervall setzen
 client.once('ready', () => {
   console.log(`🚀 Eingeloggt als ${client.user.tag}`);
   postWarnings();
