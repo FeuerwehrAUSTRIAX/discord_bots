@@ -45,7 +45,7 @@ function createEmbed(loc, warns) {
 
   for (const w of warns) {
     embed.addFields({
-      name: `ID ${w.warnid} – Stufe ${w.warnstufeid} (wlevel ${w.rawinfo?.wlevel ?? '–'})`, // rawinfo kann undefined sein
+      name: `ID ${w.warnid} – Stufe ${w.warnstufeid} (wlevel ${w.rawinfo?.wlevel ?? '–'})`,
       value: `Von **${w.begin}** bis **${w.end}**\n${w.text}`
     });
   }
