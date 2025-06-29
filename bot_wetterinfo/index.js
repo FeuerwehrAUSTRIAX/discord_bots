@@ -3,7 +3,7 @@ require('dotenv').config();
 const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const fetch = require('node-fetch');
 
-// === Deine vier Orte ===
+// Deine vier Orte und ihre ZAMG-API-URLs
 const locations = [
   { name: 'Wiener Neustadt', url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.2500&lat=47.8000&lang=en' },
   { name: 'Mödling',         url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.28921&lat=48.08605&lang=en' },
@@ -11,11 +11,10 @@ const locations = [
   { name: 'Wien',            url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.37250&lat=48.20833&lang=en' }
 ];
 
-// === Client & Channel ===
 const client = new Client({ intents: [ GatewayIntentBits.Guilds ] });
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
-// === Warnungen abfragen ===
+// 1. WARNUNGEN ABFRAGEN
 async function fetchWarnings() {
   const out = [];
   for (const loc of locations) {
@@ -23,14 +22,17 @@ async function fetchWarnings() {
       const res  = await fetch(loc.url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+
       const raw = Array.isArray(data.warnings)
                 ? data.warnings
                 : Array.isArray(data.properties?.warnings)
                   ? data.properties.warnings
                   : [];
+
       const warns = raw
         .filter(w => w.type === 'Warning')
         .map(w => w.properties);
+
       out.push({ location: loc.name, warns });
     } catch (err) {
       out.push({ location: loc.name, error: err.message });
@@ -39,24 +41,46 @@ async function fetchWarnings() {
   return out;
 }
 
-// === Embed bauen ===
+// 2. EMBED ERSTELLEN (mit Farbe & deutschem Datum für Wien)
 function makeEmbed(location, warns) {
+  // höchste Warnstufe ermitteln (als Zahl)
+  const maxStufe = Math.max(...warns.map(w => Number(w.warnstufeid)));
+
+  // Farbzuweisung: 1=Gelb, 2=Orange, 3=Rot, 4=Violett, sonst Grau
+  const colorMap = {
+    1: 0xFFFF00,
+    2: 0xFFA500,
+    3: 0xFF0000,
+    4: 0x8A2BE2
+  };
+
+  // aktuelles Datum in Deutsch, Zeitzone Wien
+  const heute = new Date().toLocaleDateString('de-AT', {
+    timeZone: 'Europe/Vienna',
+    weekday: 'long',
+    year:    'numeric',
+    month:   'long',
+    day:     'numeric'
+  });
+
   const embed = new EmbedBuilder()
     .setTitle(`⚠️ Warnungen für ${location}`)
-    .setTimestamp();
-    
+    .setColor(colorMap[maxStufe] ?? 0x808080)
+    .setFooter({ text: `Stand: ${heute}` });
+
   for (const w of warns) {
     embed.addFields({
-      name: `ID ${w.warnid} – Stufe ${w.warnstufeid} (wlevel ${w.rawinfo?.wlevel ?? '–'})`,
-      value: `Von **${w.begin}** bis **${w.end}**\n${w.text}`
+      name:  `Warn-ID: ${w.warnid} | Warnstufe: ${w.warnstufeid}`,
+      value: `Beginn: **${w.begin}**\nEnde:   **${w.end}**\n${w.text}`,
+      inline: false
     });
   }
   return embed;
 }
 
-// === Posten nur bei Warnungen ===
+// 3. NUR BEI VORHANDENEN WARNUNGEN POSTEN
 async function postWarnings() {
-  const ch = await client.channels.fetch(CHANNEL_ID);
+  const ch   = await client.channels.fetch(CHANNEL_ID);
   const data = await fetchWarnings();
 
   for (const e of data) {
@@ -70,7 +94,7 @@ async function postWarnings() {
   }
 }
 
-// === Bot-Startup & Interval ===
+// 4. BOT START & INTERVALL
 client.once('ready', () => {
   console.log(`🚀 Eingeloggt als ${client.user.tag}`);
   postWarnings();
