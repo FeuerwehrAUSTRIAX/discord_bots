@@ -14,6 +14,21 @@ const warnLocations = [
 ];
 const weatherLocations = warnLocations.map(l => l.name);
 
+// ─────────── Übersetzungstabelle für wttr.in ───────────
+const weatherTranslations = {
+  'Sunny':               'Sonnig',
+  'Clear':               'Klar',
+  'Partly cloudy':       'Teilweise bewölkt',
+  'Cloudy':              'Bewölkt',
+  'Light rain':          'Leichter Regen',
+  'Patchy rain possible':'Vereinzelte Schauer',
+  'Moderate rain':       'Mäßiger Regen',
+  'Heavy rain':          'Starker Regen',
+  'Overcast':            'Stark bewölkt',
+  'Mist':                'Nebel',
+  // ggf. weitere hier ergänzen...
+};
+
 // ─────────── Helfer ───────────
 function splitLines(text) {
   return text
@@ -77,7 +92,6 @@ function makeWarningEmbed(location, warns, now) {
       );
     }
   }
-
   return embed;
 }
 
@@ -85,23 +99,17 @@ async function postWarnings() {
   const channel = await client.channels.fetch(WARN_CHANNEL_ID);
   const now     = DateTime.now().setZone('Europe/Vienna');
   const data    = await fetchWarnings();
-  console.log(`[Warn] Prüfe Warnungen um ${now.toISO()}`);
-
   for (const entry of data) {
     if (entry.error) continue;
     const active = entry.warns.filter(w => {
-      const b = DateTime.fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone:'Europe/Vienna' });
-      const t = DateTime.fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone:'Europe/Vienna' });
+      const b = DateTime.fromFormat(w.begin,'dd.LL.yyyy HH:mm',{zone:'Europe/Vienna'});
+      const t = DateTime.fromFormat(w.end,  'dd.LL.yyyy HH:mm',{zone:'Europe/Vienna'});
       return b <= now && now <= t;
     });
     if (!active.length) continue;
-    const embed = makeWarningEmbed(entry.location, active, now);
-    await channel.send({ embeds: [embed] })
-                 .catch(err => console.error('[Warn] Sende-Fehler:', err));
+    await channel.send({ embeds: [ makeWarningEmbed(entry.location, active, now) ] });
   }
-
-  // Trennlinie nach allen Warnungs-Embeds
-  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 // ─────────── WETTER über wttr.in ───────────
@@ -109,7 +117,6 @@ async function fetchWeather() {
   const out = [];
   for (const loc of weatherLocations) {
     try {
-      console.log(`[Weather] Hole Wetter für ${loc}`);
       const url = `https://wttr.in/${encodeURIComponent(loc)}?format=j1&lang=de`;
       const res = await fetch(url, { headers:{ 'User-Agent':'curl' } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -132,15 +139,17 @@ async function fetchWeather() {
 }
 
 function makeWeatherEmbed(location, w, now) {
+  // hier übersetzen
+  const descDE = weatherTranslations[w.desc] || w.desc;
   return new EmbedBuilder()
     .setTitle(`🌤 Wetter in ${location}`)
     .setColor(0x1E90FF)
     .setFooter({ text: `Stand: ${now.toFormat('dd.MM.yyyy HH:mm')}` })
     .addFields(
-      { name:'Temperatur',    value:`${w.temp.toFixed(1)} °C`,  inline:true },
-      { name:'Gefühlt wie',   value:`${w.feels.toFixed(1)} °C`, inline:true },
-      { name:'Luftfeuchte',   value:`${w.humidity}%`,           inline:true },
-      { name:'Beschreibung',  value:`${w.desc}`,               inline:false }
+      { name:'Temperatur',  value:`${w.temp.toFixed(1)} °C`,  inline:true },
+      { name:'Gefühlt wie', value:`${w.feels.toFixed(1)} °C`, inline:true },
+      { name:'Luftfeuchte', value:`${w.humidity}%`,           inline:true },
+      { name:'Beschreibung',value:`${descDE}`,                inline:false }
     );
 }
 
@@ -148,22 +157,15 @@ async function postWeather() {
   const channel = await client.channels.fetch(WEATHER_CHANNEL_ID);
   const now     = DateTime.now().setZone('Europe/Vienna');
   const data    = await fetchWeather();
-  console.log(`[Weather] Prüfe Wetter um ${now.toISO()}`);
-
   for (const e of data) {
     if (e.error) continue;
-    console.log(`[Weather] Sende Wetter für ${e.location}`);
-    const embed = makeWeatherEmbed(e.location, e, now);
-    await channel.send({ embeds: [embed] })
-                 .catch(err => console.error('[Weather] Sende-Fehler:', err));
+    await channel.send({ embeds: [ makeWeatherEmbed(e.location, e, now) ] });
   }
-
-  // Trennlinie nach allen Wetter-Embeds
-  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 // ─────────── Bot-Start ───────────
-const client = new Client({ intents: [ GatewayIntentBits.Guilds ] });
+const client = new Client({ intents:[ GatewayIntentBits.Guilds ] });
 client.once('ready', () => {
   console.log(`🚀 Eingeloggt als ${client.user.tag}`);
   postWarnings();
