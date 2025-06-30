@@ -10,7 +10,7 @@ const client = new Client({
 const CATEGORY_ID = '1377635882403889182';
 const TICKET_CHANNEL_ID = '1378069063963512876';
 const LOG_CHANNEL_ID = '1389272323504472164';
-const ROLE_ID = '1151994850116382883'; // Testrolle oder ersetzbar
+const ROLE_ID = '1151994850116382883';
 
 const moduleGroups = {
   FWBW: [{ label: 'Modul - Feuerwehrbasiswissen (FWBW)', value: 'FWBW' }],
@@ -82,11 +82,7 @@ const createControlRow = (status = 'initial') => {
 const logAction = async (guild, title, description) => {
   const logChannel = await guild.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
   if (!logChannel) return;
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(description)
-    .setColor(0x999999)
-    .setTimestamp();
+  const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(0x999999).setTimestamp();
   await logChannel.send({ embeds: [embed] });
 };
 
@@ -94,10 +90,7 @@ client.once('ready', async () => {
   const channel = await client.channels.fetch(TICKET_CHANNEL_ID);
   const options = Object.keys(moduleGroups).map(key => ({ label: key, value: key }));
   const row = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('select_category')
-      .setPlaceholder('Wähle einen Bereich...')
-      .addOptions(options)
+    new StringSelectMenuBuilder().setCustomId('select_category').setPlaceholder('Wähle einen Bereich...').addOptions(options)
   );
 
   const embed = new EmbedBuilder()
@@ -125,25 +118,15 @@ client.on('interactionCreate', async interaction => {
       const guild = interaction.guild;
       const user = interaction.user;
       const member = interaction.member;
-      const serverName = guild.name;
 
       const ticketChannel = await guild.channels.create({
         name: `${selected} - ${member.displayName}`,
         type: ChannelType.GuildText,
         parent: CATEGORY_ID,
         permissionOverwrites: [
-          {
-            id: guild.roles.everyone,
-            deny: [PermissionFlagsBits.ViewChannel]
-          },
-          {
-            id: user.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]
-          },
-          {
-            id: ROLE_ID,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]
-          }
+          { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
+          { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+          { id: ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
         ]
       });
 
