@@ -4,14 +4,16 @@ const { DateTime } = require('luxon');
 const fetch = require('node-fetch');
 
 // ─────────── Konfiguration ───────────
-const WARN_CHANNEL_ID     = process.env.CHANNEL_ID;
-const WEATHER_CHANNEL_ID  = process.env.WEATHER_CHANNEL_ID;
+const WARN_CHANNEL_ID = process.env.CHANNEL_ID;
+const WEATHER_CHANNEL_ID = process.env.WEATHER_CHANNEL_ID;
+
 const warnLocations = [
   { name: 'Wiener Neustadt', url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.2500&lat=47.8000&lang=de' },
   { name: 'Mödling',         url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.28921&lat=48.08605&lang=de' },
   { name: 'Schneeberg',      url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=15.80447&lat=47.76702&lang=de' },
   { name: 'Wien',            url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.37250&lat=48.20833&lang=de' }
 ];
+
 const weatherLocations = warnLocations.map(l => l.name);
 
 // ─────────── Übersetzungstabelle für wttr.in ───────────
@@ -26,7 +28,6 @@ const weatherTranslations = {
   'Heavy rain':          'Starker Regen',
   'Overcast':            'Stark bewölkt',
   'Mist':                'Nebel',
-  // ggf. weitere hier ergänzen...
 };
 
 // ─────────── Helfer ───────────
@@ -42,14 +43,16 @@ async function fetchWarnings() {
   const out = [];
   for (const loc of warnLocations) {
     try {
-      const res  = await fetch(loc.url);
+      const res = await fetch(loc.url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const raw  = Array.isArray(data.warnings)
-                 ? data.warnings
-                 : Array.isArray(data.properties?.warnings)
-                   ? data.properties.warnings
-                   : [];
+
+      const raw = Array.isArray(data.warnings)
+        ? data.warnings
+        : Array.isArray(data.properties?.warnings)
+          ? data.properties.warnings
+          : [];
+
       const warns = raw.filter(w => w.type === 'Warning').map(w => w.properties);
       out.push({ location: loc.name, warns });
     } catch (err) {
@@ -61,73 +64,82 @@ async function fetchWarnings() {
 }
 
 function makeWarningEmbed(location, warns, now) {
-  const maxStufe = Math.max(...warns.map(w => Number(w.warnstufeid)));
-  const colors   = {1:0xFFFF00,2:0xFFA500,3:0xFF0000,4:0x8A2BE2};
+  const warnstufen = warns
+    .map(w => Number(w.rawinfo?.wlevel))
+    .filter(n => !isNaN(n));
+  const maxStufe = warnstufen.length ? Math.max(...warnstufen) : 0;
+  const colors = { 1: 0xFFFF00, 2: 0xFFA500, 3: 0xFF0000, 4: 0x8A2BE2 };
+
   const embed = new EmbedBuilder()
     .setTitle(`⚠️ Warnungen für ${location}`)
     .setColor(colors[maxStufe] ?? 0x808080)
-    .setFooter({ text: `Stand: ${now.toFormat('dd.MM.yyyy')}` });
+    .setFooter({ text: `Stand: ${now.toFormat('dd.MM.yyyy HH:mm')}` });
 
   for (const w of warns) {
-    const begin = DateTime.fromFormat(w.begin, 'dd.LL.yyyy HH:mm', { zone:'Europe/Vienna' })
-                          .toFormat('dd.MM.yyyy HH:mm');
-    const end   = DateTime.fromFormat(w.end,   'dd.LL.yyyy HH:mm', { zone:'Europe/Vienna' })
-                          .toFormat('dd.MM.yyyy HH:mm');
+    const stufe = w.rawinfo?.wlevel ?? 'Unbekannt';
+    const begin = DateTime.fromSeconds(Number(w.rawinfo?.start || 0)).setZone('Europe/Vienna').toFormat('dd.MM.yyyy HH:mm');
+    const end   = DateTime.fromSeconds(Number(w.rawinfo?.end || 0)).setZone('Europe/Vienna').toFormat('dd.MM.yyyy HH:mm');
 
     embed.addFields(
-      { name:'Warnstufe', value:`${w.warnstufeid}`, inline:true },
-      { name:'Beginn',    value:`${begin} Uhr`,       inline:true },
-      { name:'Ende',      value:`${end} Uhr`,         inline:true }
+      { name: 'Warnstufe', value: `${stufe}`, inline: true },
+      { name: 'Beginn',    value: `${begin} Uhr`, inline: true },
+      { name: 'Ende',      value: `${end} Uhr`,   inline: true }
     );
-    embed.addFields({ name:'Beschreibung', value:w.text });
+    embed.addFields({ name: 'Beschreibung', value: w.text });
 
     if (w.auswirkungen) {
       const lines = splitLines(w.auswirkungen);
-      const half  = Math.ceil(lines.length/2);
-      const col1  = lines.slice(0,half).map(l=>`• ${l}`).join('\n');
-      const col2  = lines.slice(half).map(l=>`• ${l}`).join('\n') || '\u200B';
+      const half = Math.ceil(lines.length / 2);
+      const col1 = lines.slice(0, half).map(l => `• ${l}`).join('\n');
+      const col2 = lines.slice(half).map(l => `• ${l}`).join('\n') || '\u200B';
       embed.addFields(
-        { name:'⚠️ Auswirkungen', value:col1, inline:true },
-        { name:'\u200B',           value:col2, inline:true }
+        { name: '⚠️ Auswirkungen', value: col1, inline: true },
+        { name: '\u200B',          value: col2, inline: true }
       );
     }
   }
+
   return embed;
 }
 
 async function postWarnings() {
   const channel = await client.channels.fetch(WARN_CHANNEL_ID);
-  const now     = DateTime.now().setZone('Europe/Vienna');
-  const data    = await fetchWarnings();
+  const now = DateTime.now().setZone('Europe/Vienna');
+  const data = await fetchWarnings();
+
   for (const entry of data) {
     if (entry.error) continue;
+
     const active = entry.warns.filter(w => {
-      const b = DateTime.fromFormat(w.begin,'dd.LL.yyyy HH:mm',{zone:'Europe/Vienna'});
-      const t = DateTime.fromFormat(w.end,  'dd.LL.yyyy HH:mm',{zone:'Europe/Vienna'});
-      return b <= now && now <= t;
+      const start = Number(w.rawinfo?.start || 0);
+      const end = Number(w.rawinfo?.end || 0);
+      const nowTs = now.toSeconds();
+      return start <= nowTs && nowTs <= end;
     });
+
     if (!active.length) continue;
-    await channel.send({ embeds: [ makeWarningEmbed(entry.location, active, now) ] });
+    await channel.send({ embeds: [makeWarningEmbed(entry.location, active, now)] });
   }
+
   await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
-// ─────────── WETTER über wttr.in ───────────
+// ─────────── WETTER ───────────
 async function fetchWeather() {
   const out = [];
   for (const loc of weatherLocations) {
     try {
       const url = `https://wttr.in/${encodeURIComponent(loc)}?format=j1&lang=de`;
-      const res = await fetch(url, { headers:{ 'User-Agent':'curl' } });
+      const res = await fetch(url, { headers: { 'User-Agent': 'curl' } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      const cur  = data.current_condition?.[0];
+      const cur = data.current_condition?.[0];
       if (!cur) throw new Error('Keine aktuellen Wetterdaten');
       out.push({
         location: loc,
-        temp:     Number(cur.temp_C),
-        feels:    Number(cur.FeelsLikeC),
-        desc:     cur.weatherDesc?.[0]?.value ?? '',
+        temp: Number(cur.temp_C),
+        feels: Number(cur.FeelsLikeC),
+        desc: cur.weatherDesc?.[0]?.value ?? '',
         humidity: Number(cur.humidity)
       });
     } catch (err) {
@@ -139,38 +151,41 @@ async function fetchWeather() {
 }
 
 function makeWeatherEmbed(location, w, now) {
-  // hier übersetzen
   const descDE = weatherTranslations[w.desc] || w.desc;
   return new EmbedBuilder()
     .setTitle(`🌤 Wetter in ${location}`)
     .setColor(0x1E90FF)
     .setFooter({ text: `Stand: ${now.toFormat('dd.MM.yyyy HH:mm')}` })
     .addFields(
-      { name:'Temperatur',  value:`${w.temp.toFixed(1)} °C`,  inline:true },
-      { name:'Gefühlt wie', value:`${w.feels.toFixed(1)} °C`, inline:true },
-      { name:'Luftfeuchte', value:`${w.humidity}%`,           inline:true },
-      { name:'Beschreibung',value:`${descDE}`,                inline:false }
+      { name: 'Temperatur',  value: `${w.temp.toFixed(1)} °C`,  inline: true },
+      { name: 'Gefühlt wie', value: `${w.feels.toFixed(1)} °C`, inline: true },
+      { name: 'Luftfeuchte', value: `${w.humidity}%`,           inline: true },
+      { name: 'Beschreibung', value: `${descDE}`,               inline: false }
     );
 }
 
 async function postWeather() {
   const channel = await client.channels.fetch(WEATHER_CHANNEL_ID);
-  const now     = DateTime.now().setZone('Europe/Vienna');
-  const data    = await fetchWeather();
+  const now = DateTime.now().setZone('Europe/Vienna');
+  const data = await fetchWeather();
+
   for (const e of data) {
     if (e.error) continue;
-    await channel.send({ embeds: [ makeWeatherEmbed(e.location, e, now) ] });
+    await channel.send({ embeds: [makeWeatherEmbed(e.location, e, now)] });
   }
+
   await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 // ─────────── Bot-Start ───────────
-const client = new Client({ intents:[ GatewayIntentBits.Guilds ] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+
 client.once('ready', () => {
   console.log(`🚀 Eingeloggt als ${client.user.tag}`);
   postWarnings();
   postWeather();
-  setInterval(postWarnings, 15 * 60 * 1000);
-  setInterval(postWeather,   60 * 60 * 1000);
+  setInterval(postWarnings, 15 * 60 * 1000); // alle 15 Minuten
+  setInterval(postWeather, 60 * 60 * 1000);  // jede Stunde
 });
+
 client.login(process.env.DISCORD_TOKEN);
