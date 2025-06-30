@@ -1,81 +1,4 @@
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
-require('dotenv').config();
-
-const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
-  partials: [Partials.Channel]
-});
-
-const CATEGORY_ID = '1377635882403889182';
-const TICKET_CHANNEL_ID = '1378069063963512876';
-const LOG_CHANNEL_ID = '1389272323504472164';
-const AUSILDER_ROLE_ID = '1151994850116382883';
-
-const ROLE_MAP = {
-  SD: '1389281729054900254',
-  TBS: '1389281634821476402',
-  WD: '1389281719873704118',
-  FÜ: '1389281715515691164',
-  WFBB: '1389281630715121837',
-  NRD: '1389281712319627304',
-  AT: '1389281627544485968',
-  EMA: '1389281637845569637',
-  GFÜ: '1389281641125384313',
-  TE: '1389281624511746158',
-  BD: '1389281618245456074',
-  FWBW: '1383058634870882346'
-};
-
-const moduleGroups = {
-  FWBW: [{ label: 'Modul - Feuerwehrbasiswissen (FWBW)', value: 'FWBW' }],
-  TE: [
-    { label: 'Modul - Grundlagen der Technik (TE10)', value: 'TE10' },
-    { label: 'Modul - Menschenrettung aus KFZ (TE20)', value: 'TE20' },
-    { label: 'Modul - Menschenrettung mit Zug- und Hebemittel (TE30)', value: 'TE30' },
-    { label: 'Modul - Menschenrettung aus Höhen und Tiefen (TE40)', value: 'TE40' }
-  ],
-  BD: [
-    { label: 'Modul - Löschmittelbedarf (BD10)', value: 'BD10' },
-    { label: 'Modul - Löschwasserförderung (BD20)', value: 'BD20' },
-    { label: 'Modul - Druckbelüftung (BD70)', value: 'BD70' },
-    { label: 'Modul - Wärmebildkamera (BD80)', value: 'BD80' }
-  ],
-  AT: [{ label: 'Modul - Atemschutzgeräteträger (AT)', value: 'AT' }],
-  EMA: [
-    { label: 'Modul - Einsatzmaschinist B (EMA_B)', value: 'EMA_B' },
-    { label: 'Modul - Einsatzmaschinist C (EMA_C)', value: 'EMA_C' },
-    { label: 'Modul - Hubrettungsfahrzeug (EMA_C2)', value: 'EMA_C2' }
-  ],
-  GFÜ: [{ label: 'Modul - Grundlagen Führung (GFÜ)', value: 'GFÜ' }],
-  FÜ: [
-    { label: 'Modul - Führungsstufe 1 (FÜ10)', value: 'FÜ10' },
-    { label: 'Modul - Abschluss Führungsstufe 1 (ASM10)', value: 'ASM10' },
-    { label: 'Modul - Abschluss Führungsstufe 2 (FÜ20)', value: 'FÜ20' }
-  ],
-  NRD: [
-    { label: 'Modul - Grundlagen Feuerwehrfunk (NRD10)', value: 'NRD10' },
-    { label: 'Modul - Arbeiten in der Einsatzleitung (NRD20)', value: 'NRD20' }
-  ],
-  SD: [
-    { label: 'Modul - Gefahrenerkennung und Selbstschutz (SD10)', value: 'SD10' },
-    { label: 'Modul - Gefahrenabwehr 1 (SD20)', value: 'SD20' },
-    { label: 'Modul - Schutzanzug praktisch (SD25)', value: 'SD25' },
-    { label: 'Modul - Messdienst (SD35)', value: 'SD35' },
-    { label: 'Modul - Verhalten bei Einsätzen mit Gasen (SD40)', value: 'SD40' }
-  ],
-  WD: [
-    { label: 'Modul - Grundlagen Wasserdienst (WD10)', value: 'WD10' },
-    { label: 'Modul - Fahren mit dem Feuerwehrboot (WD20)', value: 'WD20' }
-  ],
-  WFBB: [
-    { label: 'Modul - Wald- und Flurbrandbekämpfung – Basis (WFBB1)', value: 'WFBB1' },
-    { label: 'Modul - Wald- und Flurbrandbekämpfung – Praxis (WFBB2)', value: 'WFBB2' }
-  ],
-  TBS: [
-    { label: 'Modul - Tunnelbrandbekämpfung Straße (TBS20)', value: 'TBS20' },
-    { label: 'Modul - Tunnelbrandbekämpfung Straße - Praxis (TBS30)', value: 'TBS30' }
-  ]
-};
+// Fortsetzung von index.js (Teil 2)
 
 client.once('ready', async () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
@@ -117,34 +40,45 @@ client.on('interactionCreate', async interaction => {
 
     } else if (id === 'uebernehmen') {
       await interaction.deferUpdate();
-      await interaction.channel.setName(`🟠-${interaction.channel.name.slice(2)}`);
+      if (interaction.channel && interaction.channel.name.startsWith('🔴')) {
+        await interaction.channel.setName(`🟠-${interaction.channel.name.slice(2)}`);
+      }
       const embed = new EmbedBuilder().setColor(0xfaa61a).setDescription(`📌 Ticket übernommen von: ${interaction.member.displayName}`);
       await interaction.followUp({ embeds: [embed], ephemeral: false });
       const actionRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('freigeben').setLabel('🔓 Freigeben').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('schliessen').setLabel('🔒 Schließen').setStyle(ButtonStyle.Danger)
       );
-      await interaction.message.edit({ components: [actionRow] });
+      if (interaction.message && interaction.message.editable) {
+        await interaction.message.edit({ components: [actionRow] });
+      }
 
     } else if (id === 'freigeben') {
       await interaction.deferUpdate();
-      await interaction.channel.setName(`🔴-${interaction.channel.name.slice(2)}`);
+      if (interaction.channel && interaction.channel.name.startsWith('🟠')) {
+        await interaction.channel.setName(`🔴-${interaction.channel.name.slice(2)}`);
+      }
 
     } else if (id === 'schliessen') {
       await interaction.deferUpdate();
-      await interaction.channel.setName(`✅-${interaction.channel.name.slice(2)}`);
+      if (interaction.channel && interaction.channel.name.startsWith('🟠') || interaction.channel.name.startsWith('🔴')) {
+        await interaction.channel.setName(`✅-${interaction.channel.name.slice(2)}`);
+      }
       const logChannel = await interaction.guild.channels.fetch(LOG_CHANNEL_ID);
       await logChannel.send(`📁 Ticket geschlossen: <#${interaction.channel.id}> von ${interaction.user}`);
       const actionRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('delete_ticket').setLabel('❌ Ticket löschen').setStyle(ButtonStyle.Danger)
       );
-      await interaction.message.edit({ components: [actionRow] });
+      if (interaction.message && interaction.message.editable) {
+        await interaction.message.edit({ components: [actionRow] });
+      }
 
     } else if (id === 'delete_ticket') {
       await interaction.deferUpdate();
-      await interaction.channel.delete();
+      if (interaction.channel) {
+        await interaction.channel.delete();
+      }
     }
-
   } else if (interaction.isStringSelectMenu()) {
     const key = interaction.customId.replace('modul_dropdown_', '');
     const selected = interaction.values[0];
