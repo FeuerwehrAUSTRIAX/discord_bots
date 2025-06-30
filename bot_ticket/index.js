@@ -9,7 +9,7 @@ const client = new Client({
 
 const CATEGORY_ID = '1377635882403889182';
 const TICKET_CHANNEL_ID = '1378069063963512876';
-const LOG_CHANNEL_ID = 'DEINE_LOG_CHANNEL_ID'; // <-- hier die Logchannel-ID eintragen
+const LOG_CHANNEL_ID = '1389272323504472164'; // <-- hier die Logchannel-ID eintragen
 
 const moduleGroups = { /* ... unverändert ... */ };
 
