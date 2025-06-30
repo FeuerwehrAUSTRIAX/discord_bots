@@ -10,7 +10,7 @@ const client = new Client({
 const CATEGORY_ID = '1377635882403889182';
 const TICKET_CHANNEL_ID = '1378069063963512876';
 const LOG_CHANNEL_ID = '1389272323504472164';
-const ROLE_ID = '1151994850116382883';
+const ROLE_ID = '1151994850116382883'; // Testrolle oder ersetzbar
 
 const moduleGroups = {
   FWBW: [{ label: 'Modul - Feuerwehrbasiswissen (FWBW)', value: 'FWBW' }],
@@ -63,125 +63,83 @@ const moduleGroups = {
   ]
 };
 
-const createControlRow = (status = 'initial') => {
-  const buttons = [];
-  if (status === 'initial') {
-    buttons.push(new ButtonBuilder().setCustomId('übernehmen').setLabel('✅ Übernehmen').setStyle(ButtonStyle.Success));
-  }
-  if (status === 'übernommen') {
-    buttons.push(new ButtonBuilder().setCustomId('freigeben').setLabel('🔁 Freigeben').setStyle(ButtonStyle.Primary));
-    buttons.push(new ButtonBuilder().setCustomId('schliessen').setLabel('🔒 Schließen').setStyle(ButtonStyle.Danger));
-  }
-  if (status === 'geschlossen') {
-    buttons.push(new ButtonBuilder().setCustomId('oeffnen').setLabel('🔓 Wieder öffnen').setStyle(ButtonStyle.Secondary));
-    buttons.push(new ButtonBuilder().setCustomId('loeschen').setLabel('🗑️ Löschen').setStyle(ButtonStyle.Secondary));
-  }
-  return new ActionRowBuilder().addComponents(buttons);
-};
-
-const logAction = async (guild, title, description) => {
-  const logChannel = await guild.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
-  if (!logChannel) return;
-  const embed = new EmbedBuilder().setTitle(title).setDescription(description).setColor(0x999999).setTimestamp();
-  await logChannel.send({ embeds: [embed] });
-};
-
 client.once('ready', async () => {
+  console.log(`✅ Bot ist online als ${client.user.tag}`);
   const channel = await client.channels.fetch(TICKET_CHANNEL_ID);
-  const options = Object.keys(moduleGroups).map(key => ({ label: key, value: key }));
-  const row = new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder().setCustomId('select_category').setPlaceholder('Wähle einen Bereich...').addOptions(options)
+
+  const allButtons = Object.keys(moduleGroups).map(key =>
+    new ButtonBuilder()
+      .setCustomId(`modul_select_${key}`)
+      .setLabel(key)
+      .setStyle(ButtonStyle.Primary)
   );
+
+  const buttonRows = [];
+  for (let i = 0; i < allButtons.length; i += 5) {
+    buttonRows.push(new ActionRowBuilder().addComponents(allButtons.slice(i, i + 5)));
+  }
 
   const embed = new EmbedBuilder()
     .setTitle('📘 Erstelle hier ein Ticket PRO AUSBILDUNG!')
-    .setDescription('Wähle zuerst den Bereich aus, dann das genaue Modul.')
+    .setDescription('Wähle zuerst den Bereich aus, für den du ein Ticket erstellen möchtest. Danach kannst du das genaue Modul auswählen.')
     .setColor(0x2f3136);
 
-  await channel.send({ embeds: [embed], components: [row] });
+  await channel.send({ embeds: [embed], components: buttonRows });
 });
 
 client.on('interactionCreate', async interaction => {
-  if (interaction.isStringSelectMenu()) {
-    if (interaction.customId === 'select_category') {
-      const key = interaction.values[0];
+  if (interaction.isButton()) {
+    const prefix = 'modul_select_';
+    if (interaction.customId.startsWith(prefix)) {
+      const key = interaction.customId.replace(prefix, '');
       const selectMenu = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`modul_dropdown_${key}`)
           .setPlaceholder('Wähle ein Modul...')
           .addOptions(moduleGroups[key])
       );
+
       await interaction.reply({ content: `Bitte wähle ein Modul aus dem Bereich **${key}**:`, components: [selectMenu], ephemeral: true });
-    } else if (interaction.customId.startsWith('modul_dropdown_')) {
-      const key = interaction.customId.replace('modul_dropdown_', '');
-      const selected = interaction.values[0];
-      const guild = interaction.guild;
-      const user = interaction.user;
-      const member = interaction.member;
-
-      const ticketChannel = await guild.channels.create({
-        name: `${selected} - ${member.displayName}`,
-        type: ChannelType.GuildText,
-        parent: CATEGORY_ID,
-        permissionOverwrites: [
-          { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
-          { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-          { id: ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
-        ]
-      });
-
-      const embed = new EmbedBuilder()
-        .setTitle(`Neue Ausbildungsanfrage – Modul: ${selected}`)
-        .setDescription(`Dies ist eine neue Anfrage für das Modul **${selected}**.\nBitte kümmere dich darum.`)
-        .setColor(0x00ff00);
-
-      await ticketChannel.send({
-        content: `@rolle`,
-        embeds: [embed],
-        components: [createControlRow('initial')]
-      });
-
-      await logAction(guild, '📥 Neues Ticket erstellt', `Modul: **${selected}**\nErstellt von: <@${member.id}>`);
-      await interaction.update({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, components: [] });
     }
-  } else if (interaction.isButton()) {
-    const channel = interaction.channel;
-    const member = interaction.member;
+  } else if (interaction.isStringSelectMenu()) {
+    const key = interaction.customId.replace('modul_dropdown_', '');
+    const selected = interaction.values[0];
     const guild = interaction.guild;
+    const user = interaction.user;
+    const member = await guild.members.fetch(user.id);
 
-    if (!member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return interaction.reply({ content: '🚫 Du hast keine Berechtigung für diese Aktion.', ephemeral: true });
-    }
+    const ticketChannel = await guild.channels.create({
+      name: `🔴 ${selected} - ${member.displayName}`,
+      type: ChannelType.GuildText,
+      parent: CATEGORY_ID,
+      permissionOverwrites: [
+        {
+          id: guild.roles.everyone,
+          deny: [PermissionFlagsBits.ViewChannel],
+        },
+        {
+          id: user.id,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+        },
+        {
+          id: ROLE_ID,
+          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+        },
+      ],
+    });
 
-    const updateButtons = async (status) => {
-      const msgs = await channel.messages.fetch({ limit: 10 });
-      const botMsg = msgs.find(m => m.author.id === client.user.id && m.components.length);
-      if (botMsg) await botMsg.edit({ components: [createControlRow(status)] });
-    };
+    const embed = new EmbedBuilder()
+      .setTitle(`Neue Ausbildungsanfrage – Modul: ${selected}`)
+      .setDescription(`Dies ist eine neue Anfrage für das Modul **${selected}**.\nBitte kümmere dich darum.`)
+      .setColor(0x00ff00);
 
-    if (interaction.customId === 'übernehmen') {
-      await channel.send(`✅ Ticket übernommen von: ${member.displayName}`);
-      await updateButtons('übernommen');
-      await logAction(guild, '✅ Ticket übernommen', `${channel} von ${member}`);
-    } else if (interaction.customId === 'freigeben') {
-      await channel.send(`🔁 Ticket wurde wieder freigegeben.`);
-      await updateButtons('initial');
-      await logAction(guild, '🔁 Ticket freigegeben', `${channel} von ${member}`);
-    } else if (interaction.customId === 'schliessen') {
-      await channel.send('🔒 Ticket wurde geschlossen.');
-      await channel.permissionOverwrites.set([]);
-      await updateButtons('geschlossen');
-      await logAction(guild, '🔒 Ticket geschlossen', `${channel} von ${member}`);
-    } else if (interaction.customId === 'oeffnen') {
-      await channel.permissionOverwrites.set([]);
-      await channel.send('🔓 Ticket wurde wieder geöffnet.');
-      await updateButtons('übernommen');
-      await logAction(guild, '🔓 Ticket wieder geöffnet', `${channel} von ${member}`);
-    } else if (interaction.customId === 'loeschen') {
-      await interaction.reply({ content: '🗑️ Ticket wird gelöscht...', ephemeral: true });
-      await logAction(guild, '🗑️ Ticket gelöscht', `${channel} von ${member}`);
-      setTimeout(() => channel.delete().catch(() => {}), 2000);
-    }
+    const actionRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('uebernehmen').setLabel('✅ Übernehmen').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId('schliessen').setLabel('🔒 Schließen').setStyle(ButtonStyle.Danger)
+    );
+
+    await ticketChannel.send({ content: '@rolle', embeds: [embed], components: [actionRow] });
+    await interaction.editReply({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, components: [] });
   }
 });
 
