@@ -1,4 +1,4 @@
-// index.js
+// index.js 
 const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 require('dotenv').config();
 
