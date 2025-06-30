@@ -11,7 +11,8 @@ const warnLocations = [
   { name: 'Wiener Neustadt', url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.2500&lat=47.8000&lang=de' },
   { name: 'Mödling',         url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.28921&lat=48.08605&lang=de' },
   { name: 'Schneeberg',      url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=15.80447&lat=47.76702&lang=de' },
-  { name: 'Wien',            url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.37250&lat=48.20833&lang=de' }
+  { name: 'Wien',            url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.37250&lat=48.20833&lang=de' },
+  { name: 'Fürstenfeld',     url: 'https://warnungen.zamg.at/wsapp/api/getWarningsForCoords?lon=16.0833&lat=47.0500&lang=de' }
 ];
 
 const weatherLocations = warnLocations.map(l => l.name);
@@ -121,7 +122,6 @@ async function postWarnings() {
   const now = DateTime.now().setZone('Europe/Vienna');
   const heute = now.startOf('day');
 
-  // Alte Nachrichten löschen
   try {
     const messages = await channel.messages.fetch({ limit: 100 });
     const botMessages = messages.filter(m => m.author.id === client.user.id);
@@ -130,13 +130,11 @@ async function postWarnings() {
     console.error(`[Warn] Fehler beim Löschen alter Nachrichten: ${err.message}`);
   }
 
-  // Nur beim ersten Start Test-Warnungen
   if (!postWarnings.hasRunOnce) {
     await postTestWarnstufen(channel);
     postWarnings.hasRunOnce = true;
   }
 
-  // Aktuelle Warnungen holen und posten
   const data = await fetchWarnings();
   for (const entry of data) {
     if (entry.error) continue;
@@ -195,14 +193,21 @@ function makeWeatherEmbed(location, w, now) {
 async function postWeather() {
   const channel = await client.channels.fetch(WEATHER_CHANNEL_ID);
   const now = DateTime.now().setZone('Europe/Vienna');
+
+  try {
+    const messages = await channel.messages.fetch({ limit: 100 });
+    const botMessages = messages.filter(m => m.author.id === client.user.id);
+    await channel.bulkDelete(botMessages, true);
+  } catch (err) {
+    console.error(`[Weather] Fehler beim Löschen alter Nachrichten: ${err.message}`);
+  }
+
   const data = await fetchWeather();
 
   for (const e of data) {
     if (e.error) continue;
     await channel.send({ embeds: [makeWeatherEmbed(e.location, e, now)] });
   }
-
-  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'); // Optional entfernen, wenn du willst
 }
 
 // ─────────── Bot-Start ───────────
