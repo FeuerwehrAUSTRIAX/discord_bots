@@ -1,7 +1,14 @@
 // ticketbot-ausbildung/index.js
 
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ChannelType, PermissionsBitField, AttachmentBuilder } = require('discord.js');
+require('dotenv').config(); // <== Damit die Umgebungsvariable gelesen wird
+
+const {
+    Client, GatewayIntentBits, Partials, EmbedBuilder,
+    ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder,
+    ChannelType, PermissionsBitField, AttachmentBuilder
+} = require('discord.js');
 const fs = require('fs');
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -12,11 +19,11 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
-const TOKEN = 'DISCORD_BOT_TOKEN';
-const TICKET_CATEGORY_ID = '123456789012345678';
-const AUSILDER_ROLE_ID = '1151994850116382883';
-const SETUP_CHANNEL_ID = '1378069063963512876';
-const LOG_CHANNEL_ID = '123456789012345679'; // Log-Channel ID hier eintragen
+const TOKEN = process.env.DISCORD_BOT_TOKEN;
+const TICKET_CATEGORY_ID = '123456789012345678'; // Kategorie-ID
+const AUSILDER_ROLE_ID = '1151994850116382883'; // Fallback-Rolle
+const SETUP_CHANNEL_ID = '1378069063963512876'; // Kanal für Auswahlmenü
+const LOG_CHANNEL_ID = '123456789012345679';    // Log-Channel für Transkripte
 
 const ROLE_MAP = {
   SD10: '1389281729054900254', SD20: '1389281729054900254', SD25: '1389281729054900254', SD35: '1389281729054900254', SD40: '1389281729054900254',
