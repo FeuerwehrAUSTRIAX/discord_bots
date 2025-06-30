@@ -1,4 +1,3 @@
-// index.js
 const { Client, GatewayIntentBits, Partials, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 require('dotenv').config();
 
@@ -10,7 +9,22 @@ const client = new Client({
 const CATEGORY_ID = '1377635882403889182';
 const TICKET_CHANNEL_ID = '1378069063963512876';
 const LOG_CHANNEL_ID = '1389272323504472164';
-const ROLE_ID = '1151994850116382883'; // Testrolle oder ersetzbar
+const AUSILDER_ROLE_ID = '1151994850116382883';
+
+const ROLE_MAP = {
+  SD: '1389281729054900254',
+  TBS: '1389281634821476402',
+  WD: '1389281719873704118',
+  FÜ: '1389281715515691164',
+  WFBB: '1389281630715121837',
+  NRD: '1389281712319627304',
+  AT: '1389281627544485968',
+  EMA: '1389281637845569637',
+  GFÜ: '1389281641125384313',
+  TE: '1389281624511746158',
+  BD: '1389281618245456074',
+  FWBW: '1383058634870882346'
+};
 
 const moduleGroups = {
   FWBW: [{ label: 'Modul - Feuerwehrbasiswissen (FWBW)', value: 'FWBW' }],
@@ -71,7 +85,7 @@ client.once('ready', async () => {
     new ButtonBuilder()
       .setCustomId(`modul_select_${key}`)
       .setLabel(key)
-      .setStyle((index % 3) + 1) // unterschiedliche Farben
+      .setStyle((index % 3) + 1)
   );
 
   const buttonRows = [];
@@ -100,49 +114,44 @@ client.on('interactionCreate', async interaction => {
           .addOptions(moduleGroups[key])
       );
       await interaction.update({ content: `Bitte wähle ein Modul aus dem Bereich **${key}**:`, components: [selectMenu] });
-    }
-    else if (id === 'uebernehmen') {
+
+    } else if (id === 'uebernehmen') {
       await interaction.deferUpdate();
       await interaction.channel.setName(`🟠-${interaction.channel.name.slice(2)}`);
-
-      const embed = new EmbedBuilder()
-        .setColor(0xfaa61a)
-        .setDescription(`📌 Ticket übernommen von: ${interaction.member.displayName}`);
-      await interaction.followUp({ embeds: [embed] });
-
+      const embed = new EmbedBuilder().setColor(0xfaa61a).setDescription(`📌 Ticket übernommen von: ${interaction.member.displayName}`);
+      await interaction.followUp({ embeds: [embed], ephemeral: false });
       const actionRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('freigeben').setLabel('🔓 Freigeben').setStyle(ButtonStyle.Secondary),
         new ButtonBuilder().setCustomId('schliessen').setLabel('🔒 Schließen').setStyle(ButtonStyle.Danger)
       );
       await interaction.message.edit({ components: [actionRow] });
-    }
-    else if (id === 'freigeben') {
+
+    } else if (id === 'freigeben') {
       await interaction.deferUpdate();
       await interaction.channel.setName(`🔴-${interaction.channel.name.slice(2)}`);
-    }
-    else if (id === 'schliessen') {
+
+    } else if (id === 'schliessen') {
       await interaction.deferUpdate();
       await interaction.channel.setName(`✅-${interaction.channel.name.slice(2)}`);
-
       const logChannel = await interaction.guild.channels.fetch(LOG_CHANNEL_ID);
       await logChannel.send(`📁 Ticket geschlossen: <#${interaction.channel.id}> von ${interaction.user}`);
-
       const actionRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId('delete_ticket').setLabel('❌ Ticket löschen').setStyle(ButtonStyle.Danger)
       );
       await interaction.message.edit({ components: [actionRow] });
-    }
-    else if (id === 'delete_ticket') {
+
+    } else if (id === 'delete_ticket') {
       await interaction.deferUpdate();
       await interaction.channel.delete();
     }
-  }
-  else if (interaction.isStringSelectMenu()) {
+
+  } else if (interaction.isStringSelectMenu()) {
     const key = interaction.customId.replace('modul_dropdown_', '');
     const selected = interaction.values[0];
     const guild = interaction.guild;
     const user = interaction.user;
     const member = await guild.members.fetch(user.id);
+    const pingRoleId = ROLE_MAP[key] || AUSILDER_ROLE_ID;
 
     const ticketChannel = await guild.channels.create({
       name: `🔴-${selected.toLowerCase()}--${member.displayName.replace(/\s+/g, '-').toLowerCase()}`,
@@ -151,7 +160,8 @@ client.on('interactionCreate', async interaction => {
       permissionOverwrites: [
         { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
         { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
-        { id: ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
+        { id: AUSILDER_ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+        { id: pingRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
       ]
     });
 
@@ -165,7 +175,7 @@ client.on('interactionCreate', async interaction => {
       new ButtonBuilder().setCustomId('schliessen').setLabel('🔒 Schließen').setStyle(ButtonStyle.Danger)
     );
 
-    await ticketChannel.send({ content: '@rolle', embeds: [embed], components: [actionRow] });
+    await ticketChannel.send({ content: `<@&${pingRoleId}>`, embeds: [embed], components: [actionRow] });
     await interaction.reply({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, ephemeral: true });
   }
 });
