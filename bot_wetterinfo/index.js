@@ -16,7 +16,6 @@ const warnLocations = [
 
 const weatherLocations = warnLocations.map(l => l.name);
 
-// ─────────── Übersetzungstabelle für wttr.in ───────────
 const weatherTranslations = {
   'Sunny':               'Sonnig',
   'Clear':               'Klar',
@@ -102,12 +101,43 @@ function makeWarningEmbed(location, warns, now) {
   return embed;
 }
 
+async function postTestWarnstufen(channel) {
+  const now = DateTime.now().setZone('Europe/Vienna');
+  const colors = { 1: 0xFFFF00, 2: 0xFFA500, 3: 0xFF0000, 4: 0x8A2BE2 };
+
+  for (let level = 1; level <= 4; level++) {
+    const embed = new EmbedBuilder()
+      .setTitle(`🔧 Testwarnung – Stufe ${level}`)
+      .setDescription(`Dies ist eine **Testwarnung** mit Warnstufe ${level}.`)
+      .setColor(colors[level])
+      .setFooter({ text: `Test um ${now.toFormat('dd.MM.yyyy HH:mm')}` });
+
+    await channel.send({ embeds: [embed] });
+  }
+}
+
 async function postWarnings() {
   const channel = await client.channels.fetch(WARN_CHANNEL_ID);
   const now = DateTime.now().setZone('Europe/Vienna');
   const heute = now.startOf('day');
-  const data = await fetchWarnings();
 
+  // Alte Nachrichten löschen
+  try {
+    const messages = await channel.messages.fetch({ limit: 100 });
+    const botMessages = messages.filter(m => m.author.id === client.user.id);
+    await channel.bulkDelete(botMessages, true);
+  } catch (err) {
+    console.error(`[Warn] Fehler beim Löschen alter Nachrichten: ${err.message}`);
+  }
+
+  // Nur beim ersten Start Test-Warnungen
+  if (!postWarnings.hasRunOnce) {
+    await postTestWarnstufen(channel);
+    postWarnings.hasRunOnce = true;
+  }
+
+  // Aktuelle Warnungen holen und posten
+  const data = await fetchWarnings();
   for (const entry of data) {
     if (entry.error) continue;
 
@@ -120,8 +150,6 @@ async function postWarnings() {
     if (!active.length) continue;
     await channel.send({ embeds: [makeWarningEmbed(entry.location, active, now)] });
   }
-
-  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 
 // ─────────── WETTER ───────────
@@ -174,7 +202,7 @@ async function postWeather() {
     await channel.send({ embeds: [makeWeatherEmbed(e.location, e, now)] });
   }
 
-  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  await channel.send('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'); // Optional entfernen, wenn du willst
 }
 
 // ─────────── Bot-Start ───────────
