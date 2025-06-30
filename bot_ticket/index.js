@@ -8,7 +8,6 @@ const client = new Client({
 });
 
 const CATEGORY_ID = '1377635882403889182';
-const ROLE_ID = '1151994850116382883';
 const TICKET_CHANNEL_ID = '1378069063963512876';
 
 const moduleGroups = {
@@ -107,11 +106,10 @@ client.on('interactionCreate', async interaction => {
       const key = interaction.customId.replace('modul_dropdown_', '');
       const selected = interaction.values[0];
       const guild = interaction.guild;
-      const user = interaction.user;
-      const serverName = guild.name;
+      const member = await guild.members.fetch(interaction.user.id);
 
       const ticketChannel = await guild.channels.create({
-        name: `Angefragte Ausbildung - ${serverName}`,
+        name: `${selected} - ${member.displayName}`,
         type: ChannelType.GuildText,
         parent: CATEGORY_ID,
         permissionOverwrites: [
@@ -120,11 +118,11 @@ client.on('interactionCreate', async interaction => {
             deny: [PermissionFlagsBits.ViewChannel],
           },
           {
-            id: user.id,
+            id: member.id,
             allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
           },
           {
-            id: ROLE_ID,
+            id: guild.roles.cache.find(r => r.name === 'rolle')?.id || guild.roles.everyone,
             allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
           },
         ],
@@ -136,7 +134,7 @@ client.on('interactionCreate', async interaction => {
         .setColor(0x00ff00);
 
       await ticketChannel.send({
-        content: `<@&${ROLE_ID}>`,
+        content: `@rolle`,
         embeds: [embed],
       });
 
