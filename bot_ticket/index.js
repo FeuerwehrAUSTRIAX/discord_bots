@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 require('dotenv').config();
 
 const client = new Client({
@@ -103,7 +103,6 @@ client.on('interactionCreate', async interaction => {
         ephemeral: true
       });
     } else if (interaction.customId.startsWith('modul_dropdown_')) {
-      const key = interaction.customId.replace('modul_dropdown_', '');
       const selected = interaction.values[0];
       const guild = interaction.guild;
       const member = await guild.members.fetch(interaction.user.id);
@@ -113,19 +112,10 @@ client.on('interactionCreate', async interaction => {
         type: ChannelType.GuildText,
         parent: CATEGORY_ID,
         permissionOverwrites: [
-          {
-            id: guild.roles.everyone,
-            deny: [PermissionFlagsBits.ViewChannel],
-          },
-          {
-            id: member.id,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-          },
-          {
-            id: guild.roles.cache.find(r => r.name === 'rolle')?.id || guild.roles.everyone,
-            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-          },
-        ],
+          { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
+          { id: member.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+          { id: guild.roles.cache.find(r => r.name === 'rolle')?.id || guild.roles.everyone, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+        ]
       });
 
       const embed = new EmbedBuilder()
@@ -133,12 +123,39 @@ client.on('interactionCreate', async interaction => {
         .setDescription(`Dies ist eine neue Anfrage für das Modul **${selected}**.\nBitte kümmere dich darum.`)
         .setColor(0x00ff00);
 
+      const controlRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('übernehmen').setLabel('✅ Übernehmen').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('schliessen').setLabel('🔒 Schließen').setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId('oeffnen').setLabel('🔓 Wieder öffnen').setStyle(ButtonStyle.Secondary)
+      );
+
       await ticketChannel.send({
         content: `@rolle`,
         embeds: [embed],
+        components: [controlRow]
       });
+    }
+  } else if (interaction.isButton()) {
+    const channel = interaction.channel;
+    const member = interaction.member;
 
-      await interaction.update({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, components: [] });
+    if (!member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+      return interaction.reply({ content: '🚫 Du hast keine Berechtigung für diese Aktion.', ephemeral: true });
+    }
+
+    if (interaction.customId === 'schliessen') {
+      await channel.permissionOverwrites.edit(channel.guild.roles.everyone, { ViewChannel: false });
+      await channel.permissionOverwrites.edit(member.id, { ViewChannel: false });
+      return interaction.reply({ content: '🔒 Ticket wurde geschlossen.', ephemeral: false });
+    }
+
+    if (interaction.customId === 'oeffnen') {
+      await channel.permissionOverwrites.edit(member.id, { ViewChannel: true });
+      return interaction.reply({ content: '🔓 Ticket wurde wieder geöffnet.', ephemeral: false });
+    }
+
+    if (interaction.customId === 'übernehmen') {
+      return interaction.reply({ content: `✅ Ticket übernommen von: ${member.displayName}`, ephemeral: false });
     }
   }
 });
