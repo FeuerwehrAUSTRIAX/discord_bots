@@ -67,11 +67,11 @@ client.once('ready', async () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
   const channel = await client.channels.fetch(TICKET_CHANNEL_ID);
 
-  const allButtons = Object.keys(moduleGroups).map(key =>
+  const allButtons = Object.keys(moduleGroups).map((key, index) =>
     new ButtonBuilder()
       .setCustomId(`modul_select_${key}`)
       .setLabel(key)
-      .setStyle(ButtonStyle.Primary)
+      .setStyle((index % 3) + 1) // unterschiedliche Farben
   );
 
   const buttonRows = [];
@@ -89,26 +89,55 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
-    if (interaction.customId.startsWith('modul_select_')) {
-      const key = interaction.customId.replace('modul_select_', '');
+    const id = interaction.customId;
+
+    if (id.startsWith('modul_select_')) {
+      const key = id.replace('modul_select_', '');
       const selectMenu = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`modul_dropdown_${key}`)
           .setPlaceholder('Wähle ein Modul...')
           .addOptions(moduleGroups[key])
       );
-      await interaction.reply({ content: `Bitte wähle ein Modul aus dem Bereich **${key}**:`, components: [selectMenu], ephemeral: true });
-    } else if (interaction.customId === 'uebernehmen') {
-      await interaction.deferReply({ ephemeral: true });
-      await interaction.channel.setName(`🟠-${interaction.channel.name.slice(2)}`);
-      await interaction.followUp(`📌 Ticket übernommen von: ${interaction.member.displayName}`);
-    } else if (interaction.customId === 'schliessen') {
-      await interaction.deferReply({ ephemeral: true });
-      await interaction.channel.setName(`✅-${interaction.channel.name.slice(2)}`);
-      await interaction.followUp(`📁 Ticket wurde geschlossen.`);
-      // optional: Channel löschen nach Zeit oder Datei export etc.
+      await interaction.update({ content: `Bitte wähle ein Modul aus dem Bereich **${key}**:`, components: [selectMenu] });
     }
-  } else if (interaction.isStringSelectMenu()) {
+    else if (id === 'uebernehmen') {
+      await interaction.deferUpdate();
+      await interaction.channel.setName(`🟠-${interaction.channel.name.slice(2)}`);
+
+      const embed = new EmbedBuilder()
+        .setColor(0xfaa61a)
+        .setDescription(`📌 Ticket übernommen von: ${interaction.member.displayName}`);
+      await interaction.followUp({ embeds: [embed] });
+
+      const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('freigeben').setLabel('🔓 Freigeben').setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder().setCustomId('schliessen').setLabel('🔒 Schließen').setStyle(ButtonStyle.Danger)
+      );
+      await interaction.message.edit({ components: [actionRow] });
+    }
+    else if (id === 'freigeben') {
+      await interaction.deferUpdate();
+      await interaction.channel.setName(`🔴-${interaction.channel.name.slice(2)}`);
+    }
+    else if (id === 'schliessen') {
+      await interaction.deferUpdate();
+      await interaction.channel.setName(`✅-${interaction.channel.name.slice(2)}`);
+
+      const logChannel = await interaction.guild.channels.fetch(LOG_CHANNEL_ID);
+      await logChannel.send(`📁 Ticket geschlossen: <#${interaction.channel.id}> von ${interaction.user}`);
+
+      const actionRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('delete_ticket').setLabel('❌ Ticket löschen').setStyle(ButtonStyle.Danger)
+      );
+      await interaction.message.edit({ components: [actionRow] });
+    }
+    else if (id === 'delete_ticket') {
+      await interaction.deferUpdate();
+      await interaction.channel.delete();
+    }
+  }
+  else if (interaction.isStringSelectMenu()) {
     const key = interaction.customId.replace('modul_dropdown_', '');
     const selected = interaction.values[0];
     const guild = interaction.guild;
@@ -137,7 +166,7 @@ client.on('interactionCreate', async interaction => {
     );
 
     await ticketChannel.send({ content: '@rolle', embeds: [embed], components: [actionRow] });
-    await interaction.editReply({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, components: [] });
+    await interaction.reply({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, ephemeral: true });
   }
 });
 
