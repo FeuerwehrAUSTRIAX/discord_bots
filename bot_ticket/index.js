@@ -1,5 +1,5 @@
 // index.js
-const { Client, GatewayIntentBits, Partials, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 require('dotenv').config();
 
 const client = new Client({
@@ -8,7 +8,7 @@ const client = new Client({
 });
 
 const CATEGORY_ID = '1377635882403889182';
-const ROLE_ID = '1151994850116382883'; // Testrolle
+const ROLE_ID = '1151994850116382883';
 const TICKET_CHANNEL_ID = '1378069063963512876';
 
 const moduleGroups = {
@@ -66,79 +66,82 @@ client.once('ready', async () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
   const channel = await client.channels.fetch(TICKET_CHANNEL_ID);
 
-  const allButtons = Object.keys(moduleGroups).map(key =>
-    new ButtonBuilder()
-      .setCustomId(`modul_select_${key}`)
-      .setLabel(key)
-      .setStyle(ButtonStyle.Primary)
-  );
+  const categoryOptions = Object.keys(moduleGroups).map(key => ({
+    label: `Ausbildungsbereich: ${key}`,
+    description: `Wähle diesen Bereich um verfügbare Module zu sehen`,
+    value: key
+  }));
 
-  // Aufteilen in mehrere ActionRows (max 5 Buttons pro Row)
-  const buttonRows = [];
-  for (let i = 0; i < allButtons.length; i += 5) {
-    buttonRows.push(new ActionRowBuilder().addComponents(allButtons.slice(i, i + 5)));
-  }
+  const categoryRow = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId('modul_category_select')
+      .setPlaceholder('Wähle einen Ausbildungsbereich...')
+      .addOptions(categoryOptions)
+  );
 
   const embed = new EmbedBuilder()
     .setTitle('📘 Erstelle hier ein Ticket PRO AUSBILDUNG!')
-    .setDescription('Wähle zuerst den Bereich aus, für den du ein Ticket erstellen möchtest. Danach kannst du das genaue Modul auswählen.')
+    .setDescription('Wähle zuerst den gewünschten Ausbildungsbereich. Danach kannst du das genaue Modul auswählen.')
     .setColor(0x2f3136);
 
-  await channel.send({ embeds: [embed], components: buttonRows });
+  await channel.send({ embeds: [embed], components: [categoryRow] });
 });
 
 client.on('interactionCreate', async interaction => {
-  if (interaction.isButton()) {
-    const prefix = 'modul_select_';
-    if (interaction.customId.startsWith(prefix)) {
-      const key = interaction.customId.replace(prefix, '');
-      const selectMenu = new ActionRowBuilder().addComponents(
+  if (interaction.isStringSelectMenu()) {
+    if (interaction.customId === 'modul_category_select') {
+      const selectedCategory = interaction.values[0];
+      const moduleRow = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
-          .setCustomId(`modul_dropdown_${key}`)
+          .setCustomId(`modul_dropdown_${selectedCategory}`)
           .setPlaceholder('Wähle ein Modul...')
-          .addOptions(moduleGroups[key])
+          .addOptions(moduleGroups[selectedCategory])
       );
 
-      await interaction.reply({ content: `Bitte wähle das Modul aus dem Bereich **${key}**:`, components: [selectMenu], ephemeral: true });
+      await interaction.reply({
+        content: `Bitte wähle nun ein Modul aus dem Bereich **${selectedCategory}**:`,
+        components: [moduleRow],
+        ephemeral: true
+      });
+    } else if (interaction.customId.startsWith('modul_dropdown_')) {
+      const key = interaction.customId.replace('modul_dropdown_', '');
+      const selected = interaction.values[0];
+      const guild = interaction.guild;
+      const user = interaction.user;
+      const serverName = guild.name;
+
+      const ticketChannel = await guild.channels.create({
+        name: `Angefragte Ausbildung - ${serverName}`,
+        type: ChannelType.GuildText,
+        parent: CATEGORY_ID,
+        permissionOverwrites: [
+          {
+            id: guild.roles.everyone,
+            deny: [PermissionFlagsBits.ViewChannel],
+          },
+          {
+            id: user.id,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+          },
+          {
+            id: ROLE_ID,
+            allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
+          },
+        ],
+      });
+
+      const embed = new EmbedBuilder()
+        .setTitle(`Neue Ausbildungsanfrage – Modul: ${selected}`)
+        .setDescription(`Dies ist eine neue Anfrage für das Modul **${selected}**.\nBitte kümmere dich darum.`)
+        .setColor(0x00ff00);
+
+      await ticketChannel.send({
+        content: `<@&${ROLE_ID}>`,
+        embeds: [embed],
+      });
+
+      await interaction.update({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, components: [] });
     }
-  } else if (interaction.isStringSelectMenu()) {
-    const key = interaction.customId.replace('modul_dropdown_', '');
-    const selected = interaction.values[0];
-    const guild = interaction.guild;
-    const user = interaction.user;
-    const serverName = guild.name;
-
-    const ticketChannel = await guild.channels.create({
-      name: `Angefragte Ausbildung - ${serverName}`,
-      type: ChannelType.GuildText,
-      parent: CATEGORY_ID,
-      permissionOverwrites: [
-        {
-          id: guild.roles.everyone,
-          deny: [PermissionFlagsBits.ViewChannel],
-        },
-        {
-          id: user.id,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-        },
-        {
-          id: ROLE_ID,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-        },
-      ],
-    });
-
-    const embed = new EmbedBuilder()
-      .setTitle(`Neue Ausbildungsanfrage – Modul: ${selected}`)
-      .setDescription(`Dies ist eine neue Anfrage für das Modul **${selected}**.\nBitte kümmere dich darum.`)
-      .setColor(0x00ff00);
-
-    await ticketChannel.send({
-      content: `<@&${ROLE_ID}>`,
-      embeds: [embed],
-    });
-
-    await interaction.update({ content: `✅ Dein Ticket wurde erstellt: ${ticketChannel}`, components: [] });
   }
 });
 
