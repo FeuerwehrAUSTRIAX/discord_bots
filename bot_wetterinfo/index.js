@@ -3,7 +3,6 @@ const { Client, GatewayIntentBits, EmbedBuilder } = require('discord.js');
 const { DateTime } = require('luxon');
 const fetch = require('node-fetch');
 
-// ─────────── Konfiguration ───────────
 const WARN_CHANNEL_ID = process.env.CHANNEL_ID;
 const WEATHER_CHANNEL_ID = process.env.WEATHER_CHANNEL_ID;
 
@@ -29,7 +28,6 @@ const weatherTranslations = {
   'Mist':                'Nebel',
 };
 
-// ─────────── Helfer ───────────
 function splitLines(text) {
   return text
     .split('\n')
@@ -37,7 +35,6 @@ function splitLines(text) {
     .filter(Boolean);
 }
 
-// ─────────── WARNUNGEN ───────────
 async function fetchWarnings() {
   const out = [];
   for (const loc of warnLocations) {
@@ -63,9 +60,7 @@ async function fetchWarnings() {
 }
 
 function makeWarningEmbed(location, warns, now) {
-  const warnstufen = warns
-    .map(w => Number(w.rawinfo?.wlevel))
-    .filter(n => !isNaN(n));
+  const warnstufen = warns.map(w => Number(w.rawinfo?.wlevel)).filter(n => !isNaN(n));
   const maxStufe = warnstufen.length ? Math.max(...warnstufen) : 0;
   const colors = { 1: 0xFFFF00, 2: 0xFFA500, 3: 0xFF0000, 4: 0x8A2BE2 };
 
@@ -101,21 +96,6 @@ function makeWarningEmbed(location, warns, now) {
   return embed;
 }
 
-async function postTestWarnstufen(channel) {
-  const now = DateTime.now().setZone('Europe/Vienna');
-  const colors = { 1: 0xFFFF00, 2: 0xFFA500, 3: 0xFF0000, 4: 0x8A2BE2 };
-
-  for (let level = 1; level <= 4; level++) {
-    const embed = new EmbedBuilder()
-      .setTitle(`🔧 Testwarnung – Stufe ${level}`)
-      .setDescription(`Dies ist eine **Testwarnung** mit Warnstufe ${level}.`)
-      .setColor(colors[level])
-      .setFooter({ text: `Test um ${now.toFormat('dd.MM.yyyy HH:mm')}` });
-
-    await channel.send({ embeds: [embed] });
-  }
-}
-
 async function postWarnings() {
   const channel = await client.channels.fetch(WARN_CHANNEL_ID);
   const now = DateTime.now().setZone('Europe/Vienna');
@@ -129,11 +109,7 @@ async function postWarnings() {
     console.error(`[Warn] Fehler beim Löschen alter Nachrichten: ${err.message}`);
   }
 
-  if (!postWarnings.hasRunOnce) {
-    await postTestWarnstufen(channel);
-    postWarnings.hasRunOnce = true;
-  }
-
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const data = await fetchWarnings();
   for (const entry of data) {
     if (entry.error) continue;
@@ -146,10 +122,10 @@ async function postWarnings() {
 
     if (!active.length) continue;
     await channel.send({ embeds: [makeWarningEmbed(entry.location, active, now)] });
+    await delay(300);
   }
 }
 
-// ─────────── WETTER ───────────
 async function fetchWeather() {
   const out = [];
   for (const loc of weatherLocations) {
@@ -201,23 +177,23 @@ async function postWeather() {
     console.error(`[Weather] Fehler beim Löschen alter Nachrichten: ${err.message}`);
   }
 
+  const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
   const data = await fetchWeather();
-
   for (const e of data) {
     if (e.error) continue;
     await channel.send({ embeds: [makeWeatherEmbed(e.location, e, now)] });
+    await delay(300);
   }
 }
 
-// ─────────── Bot-Start ───────────
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 client.once('ready', () => {
   console.log(`🚀 Eingeloggt als ${client.user.tag}`);
   postWarnings();
   postWeather();
-  setInterval(postWarnings, 15 * 60 * 1000); // alle 15 Minuten
-  setInterval(postWeather, 60 * 60 * 1000);  // jede Stunde
+  setInterval(postWarnings, 15 * 60 * 1000);
+  setInterval(postWeather, 60 * 60 * 1000);
 });
 
 client.login(process.env.DISCORD_TOKEN);
