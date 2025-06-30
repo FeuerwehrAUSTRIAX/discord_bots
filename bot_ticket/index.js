@@ -89,17 +89,24 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
   if (interaction.isButton()) {
-    const prefix = 'modul_select_';
-    if (interaction.customId.startsWith(prefix)) {
-      const key = interaction.customId.replace(prefix, '');
+    if (interaction.customId.startsWith('modul_select_')) {
+      const key = interaction.customId.replace('modul_select_', '');
       const selectMenu = new ActionRowBuilder().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId(`modul_dropdown_${key}`)
           .setPlaceholder('Wähle ein Modul...')
           .addOptions(moduleGroups[key])
       );
-
       await interaction.reply({ content: `Bitte wähle ein Modul aus dem Bereich **${key}**:`, components: [selectMenu], ephemeral: true });
+    } else if (interaction.customId === 'uebernehmen') {
+      await interaction.deferReply({ ephemeral: true });
+      await interaction.channel.setName(`🟠-${interaction.channel.name.slice(2)}`);
+      await interaction.followUp(`📌 Ticket übernommen von: ${interaction.member.displayName}`);
+    } else if (interaction.customId === 'schliessen') {
+      await interaction.deferReply({ ephemeral: true });
+      await interaction.channel.setName(`✅-${interaction.channel.name.slice(2)}`);
+      await interaction.followUp(`📁 Ticket wurde geschlossen.`);
+      // optional: Channel löschen nach Zeit oder Datei export etc.
     }
   } else if (interaction.isStringSelectMenu()) {
     const key = interaction.customId.replace('modul_dropdown_', '');
@@ -109,23 +116,14 @@ client.on('interactionCreate', async interaction => {
     const member = await guild.members.fetch(user.id);
 
     const ticketChannel = await guild.channels.create({
-      name: `🔴 ${selected} - ${member.displayName}`,
+      name: `🔴-${selected.toLowerCase()}--${member.displayName.replace(/\s+/g, '-').toLowerCase()}`,
       type: ChannelType.GuildText,
       parent: CATEGORY_ID,
       permissionOverwrites: [
-        {
-          id: guild.roles.everyone,
-          deny: [PermissionFlagsBits.ViewChannel],
-        },
-        {
-          id: user.id,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-        },
-        {
-          id: ROLE_ID,
-          allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages],
-        },
-      ],
+        { id: guild.roles.everyone, deny: [PermissionFlagsBits.ViewChannel] },
+        { id: user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] },
+        { id: ROLE_ID, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages] }
+      ]
     });
 
     const embed = new EmbedBuilder()
