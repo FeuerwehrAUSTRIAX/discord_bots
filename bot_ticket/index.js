@@ -66,21 +66,25 @@ client.once('ready', async () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
   const channel = await client.channels.fetch(TICKET_CHANNEL_ID);
 
-  const buttonRow = new ActionRowBuilder().addComponents(
-    Object.keys(moduleGroups).map(key =>
-      new ButtonBuilder()
-        .setCustomId(`modul_select_${key}`)
-        .setLabel(key)
-        .setStyle(ButtonStyle.Primary)
-    )
+  const allButtons = Object.keys(moduleGroups).map(key =>
+    new ButtonBuilder()
+      .setCustomId(`modul_select_${key}`)
+      .setLabel(key)
+      .setStyle(ButtonStyle.Primary)
   );
+
+  // Aufteilen in mehrere ActionRows (max 5 Buttons pro Row)
+  const buttonRows = [];
+  for (let i = 0; i < allButtons.length; i += 5) {
+    buttonRows.push(new ActionRowBuilder().addComponents(allButtons.slice(i, i + 5)));
+  }
 
   const embed = new EmbedBuilder()
     .setTitle('📘 Erstelle hier ein Ticket PRO AUSBILDUNG!')
     .setDescription('Wähle zuerst den Bereich aus, für den du ein Ticket erstellen möchtest. Danach kannst du das genaue Modul auswählen.')
     .setColor(0x2f3136);
 
-  await channel.send({ embeds: [embed], components: [buttonRow] });
+  await channel.send({ embeds: [embed], components: buttonRows });
 });
 
 client.on('interactionCreate', async interaction => {
