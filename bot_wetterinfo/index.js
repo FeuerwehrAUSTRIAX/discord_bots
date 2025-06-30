@@ -105,16 +105,16 @@ function makeWarningEmbed(location, warns, now) {
 async function postWarnings() {
   const channel = await client.channels.fetch(WARN_CHANNEL_ID);
   const now = DateTime.now().setZone('Europe/Vienna');
+  const heute = now.startOf('day');
   const data = await fetchWarnings();
 
   for (const entry of data) {
     if (entry.error) continue;
 
     const active = entry.warns.filter(w => {
-      const start = Number(w.rawinfo?.start || 0);
-      const end = Number(w.rawinfo?.end || 0);
-      const nowTs = now.toSeconds();
-      return start <= nowTs && nowTs <= end;
+      const start = DateTime.fromSeconds(Number(w.rawinfo?.start || 0)).setZone('Europe/Vienna');
+      const end   = DateTime.fromSeconds(Number(w.rawinfo?.end || 0)).setZone('Europe/Vienna');
+      return start <= heute.endOf('day') && end >= heute;
     });
 
     if (!active.length) continue;
