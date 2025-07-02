@@ -3,7 +3,7 @@ import fs from 'fs';
 import https from 'https';
 
 // Optional: Wenn du später an Discord posten willst
-// import fetch from 'node-fetch'; 
+// import fetch from 'node-fetch'; a
 
 (async () => {
   console.log('🚀 Starte Headless-Browser...');
