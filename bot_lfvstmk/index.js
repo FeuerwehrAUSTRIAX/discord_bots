@@ -1,56 +1,52 @@
-import fetch from 'node-fetch';
-import { config } from 'dotenv';
-config(); // Für Zugriff auf DISCORD_WEBHOOK
+import puppeteer from 'puppeteer';
+import fs from 'fs';
+import https from 'https';
 
-const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
-const CSV_URL = "https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Public.aspx?view=24";
+// Optional: Wenn du später an Discord posten willst
+// import fetch from 'node-fetch'; 
 
-// 👇 Hilfsfunktion: CSV in JSON umwandeln
-function parseCSV(csvText) {
-  const lines = csvText.trim().split('\n');
-  const headers = lines.shift().split(';');
-  return lines.map(line => {
-    const values = line.split(';');
-    return headers.reduce((obj, header, i) => {
-      obj[header.trim()] = values[i]?.trim();
-      return obj;
-    }, {});
+(async () => {
+  console.log('🚀 Starte Headless-Browser...');
+
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox'] // wichtig für Railway!
   });
-}
 
-async function main() {
-  try {
-    console.log("🔄 CSV wird abgerufen...");
-    const res = await fetch(CSV_URL);
-    if (!res.ok) throw new Error("Download fehlgeschlagen");
-    const csv = await res.text();
-    const daten = parseCSV(csv);
+  const page = await browser.newPage();
 
-    // 🔎 Optional: Filter nur aktuelle Einsätze
-    const heute = new Date().toISOString().slice(0, 10).split("-").reverse().join(".");
-    const aktuelleEinsaetze = daten.filter(e => e.date === heute);
+  console.log('🌐 Lade Einsatzübersichtsseite...');
+  await page.goto(
+    'https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Liste_App_Public.html?Bereich=all',
+    { waitUntil: 'networkidle0', timeout: 0 }
+  );
 
-    if (aktuelleEinsaetze.length === 0) {
-      console.log("ℹ️ Keine Einsätze für heute.");
-      return;
-    }
+  console.log('📥 Lade CSV-Daten...');
+  const csvUrl =
+    'https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Public.aspx?view=24';
 
-    for (const einsatz of aktuelleEinsaetze.slice(0, 5)) {
-      const nachricht = `🚒 **${einsatz.sub_tycod}** in ${einsatz.s_name} (${einsatz.dgroup}) – ${einsatz.tycod}`;
-      console.log("📤 Sende an Discord:", nachricht);
+  const csvResponse = await page.goto(csvUrl, { timeout: 0 });
+  const csvBuffer = await csvResponse.buffer();
 
-      await fetch(DISCORD_WEBHOOK, {
-        method: "POST",
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: nachricht })
-      });
-    }
+  const filename = 'einsaetze.csv';
+  fs.writeFileSync(filename, csvBuffer);
+  console.log(`✅ CSV gespeichert als "${filename}"`);
 
-    console.log("✅ Alles erledigt!");
+  await browser.close();
 
-  } catch (err) {
-    console.error("❌ Fehler:", err.message);
+  // OPTIONAL: An Discord schicken (wenn du willst)
+  /*
+  const webhookUrl = process.env.DISCORD_WEBHOOK;
+  if (webhookUrl) {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: `Neue Einsatzdaten heruntergeladen (${new Date().toLocaleString()})`
+      })
+    });
+    console.log('📤 An Discord gesendet!');
   }
-}
+  */
 
-main();
+})();
