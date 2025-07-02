@@ -1,52 +1,29 @@
-import puppeteer from 'puppeteer';
-import fs from 'fs';
-import https from 'https';
+require('dotenv').config();
+const express = require('express');
+const axios   = require('axios');
+const cors    = require('cors');
 
-// Optional: Wenn du später an Discord posten willst
-// import fetch from 'node-fetch'; a
+const app = express();
+app.use(cors());
 
-(async () => {
-  console.log('🚀 Starte Headless-Browser...');
+const LFV_URL = process.env.LFV_URL;
+const PORT    = process.env.PORT || 3000;
 
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'] // wichtig für Railway!
-  });
-
-  const page = await browser.newPage();
-
-  console.log('🌐 Lade Einsatzübersichtsseite...');
-  await page.goto(
-    'https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Liste_App_Public.html?Bereich=all',
-    { waitUntil: 'networkidle0', timeout: 0 }
-  );
-
-  console.log('📥 Lade CSV-Daten...');
-  const csvUrl =
-    'https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Public.aspx?view=24';
-
-  const csvResponse = await page.goto(csvUrl, { timeout: 0 });
-  const csvBuffer = await csvResponse.buffer();
-
-  const filename = 'einsaetze.csv';
-  fs.writeFileSync(filename, csvBuffer);
-  console.log(`✅ CSV gespeichert als "${filename}"`);
-
-  await browser.close();
-
-  // OPTIONAL: An Discord schicken (wenn du willst)
-  /*
-  const webhookUrl = process.env.DISCORD_WEBHOOK;
-  if (webhookUrl) {
-    await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        content: `Neue Einsatzdaten heruntergeladen (${new Date().toLocaleString()})`
-      })
+app.get('/api/einsaetze', async (req, res) => {
+  try {
+    const response = await axios.get(LFV_URL, {
+      headers: {
+        'Referer':    LFV_URL,
+        'User-Agent': 'Mozilla/5.0'
+      },
+      responseType: 'stream'
     });
-    console.log('📤 An Discord gesendet!');
+    res.setHeader('Content-Type', 'text/csv');
+    response.data.pipe(res);
+  } catch (err) {
+    console.error('Fehler beim Abruf:', err.message);
+    res.status(502).send('Fehler beim Abruf der Einsätze');
   }
-  */
+});
 
-})();
+app.listen(PORT, () => console.log(`Proxy läuft auf Port ${PORT}`));
