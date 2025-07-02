@@ -1,0 +1,8 @@
+{
+  "projectId": "<RAILWAY_PROJECT_ID>",
+  "environment": "production",
+  "service": {
+    "id": "<SERVICE_ID>",
+    "name": "default"
+  }
+}
