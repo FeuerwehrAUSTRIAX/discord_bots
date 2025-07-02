@@ -1,7 +1,9 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-const WEBHOOK_URL = "https://discord.com/api/webhooks/1389898593862811709/ugPbqAqMqvOzJyGkkdPB1jKGcBOEx3OX2Zzd1NKTV8ZSpLc8i1FRvHLSSMEzyhCc2qUo";
+require("dotenv").config();
+
+const WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL;
 
 let lastPosted = [];
 
@@ -14,7 +16,7 @@ async function fetchAndPost() {
 
     $("#datagrid table tbody tr").each(async (_, row) => {
       const tds = $(row).find("td");
-      if (tds.length < 5) return; // nur vollständige Datensätze
+      if (tds.length < 5) return;
 
       const einsatzart = $(tds[0]).text().trim();
       const datum = $(tds[1]).text().trim();
@@ -22,17 +24,14 @@ async function fetchAndPost() {
       const statusImg = $(tds[3]).find("img").attr("src") || "❓";
       const status = statusImg.split("/").pop().replace(".png", "").toUpperCase();
 
-      const id = `${datum}-${einsatzart}-${ort}`; // eindeutige ID
-
+      const id = `${datum}-${einsatzart}-${ort}`;
       if (lastPosted.includes(id)) return;
       lastPosted.push(id);
 
-      const message = {
-        content: `🚨 **${einsatzart}** in **${ort}**\n📅 ${datum}\n🟡 Status: \`${status}\``,
-      };
+      const content = `🚨 **${einsatzart}** in **${ort}**\n📅 ${datum}\n🟡 Status: \`${status}\``;
 
-      await axios.post(WEBHOOK_URL, message);
-      console.log("📤 Gesendet:", message.content);
+      await axios.post(WEBHOOK_URL, { content });
+      console.log("📤 Gesendet:", content);
     });
 
   } catch (err) {
@@ -40,6 +39,6 @@ async function fetchAndPost() {
   }
 }
 
-// Sofort ausführen und dann alle 5 Minuten
+// Starte sofort, dann alle 5 Minuten erneut
 fetchAndPost();
 setInterval(fetchAndPost, 5 * 60 * 1000);
