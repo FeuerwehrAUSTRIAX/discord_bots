@@ -98,6 +98,6 @@ async function run() {
 }
 
 // Start & Intervall
-console.log('[index.js] Starte, Intervall:', FETCH_INTERVAL/1000, 'Sekunden');
+console.log('[index.js] Starte, Intervall:', FETCH_INTERVAL / 1000, 'Sekunden');
 run();
 setInterval(run, FETCH_INTERVAL);
