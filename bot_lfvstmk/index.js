@@ -17,8 +17,10 @@ const PARAMS = {
 
 // Holt die Einsatz-Liste und gibt ein Array von Strings zurück
 async function fetchEinsaetze() {
+  console.log('[fetchEinsaetze] Starte Abruf der Einsatzdaten von:', BASE_URL);
   try {
     const resp = await axios.get(BASE_URL, { params: PARAMS });
+    console.log('[fetchEinsaetze] Daten empfangen, HTTP-Status:', resp.status);
     const $ = cheerio.load(resp.data);
     const einsaetze = [];
 
@@ -31,40 +33,47 @@ async function fetchEinsaetze() {
       einsaetze.push(`**${zeit}** – ${stichwort} in ${ort}`);
     });
 
+    console.log(`[fetchEinsaetze] HTML geparsed, Einträge gefunden: ${einsaetze.length}`);
     return einsaetze;
   } catch (err) {
-    console.error('Fehler beim Abrufen der Einsätze:', err);
+    console.error('[fetchEinsaetze] Fehler beim Abrufen der Einsätze:', err.message);
     return [];
   }
 }
 
 // Sendet eine Nachricht an den Discord-Webhook
 async function postToDiscord(content) {
+  console.log('[postToDiscord] Sende Nachricht an Discord-Webhook');
   if (!WEBHOOK_URL) {
-    console.warn('Kein gültiger Webhook-URL konfiguriert. Nachricht in die Konsole:');
+    console.warn('[postToDiscord] Kein gültiger Webhook-URL konfiguriert. Nachricht in Konsole:');
     console.log(content);
     return;
   }
   try {
-    await axios.post(WEBHOOK_URL, { content });
-    console.log('Nachricht erfolgreich gesendet.');
+    console.log('[postToDiscord] Payload:', content.replace(/\n/g, ' | '));
+    const resp = await axios.post(WEBHOOK_URL, { content });
+    console.log('[postToDiscord] Nachricht gesendet, HTTP-Status:', resp.status);
   } catch (err) {
-    console.error('Fehler beim Senden an Discord:', err);
+    console.error('[postToDiscord] Fehler beim Senden an Discord:', err.message);
   }
 }
 
 // Hauptfunktion: holt Einsätze und postet die Top 5
 async function run() {
+  console.log('[run] Neue Zyklus gestartet');
   const einsaetze = await fetchEinsaetze();
   if (einsaetze.length === 0) {
-    console.log('Keine Einsätze gefunden.');
+    console.log('[run] Keine Einsätze gefunden, überspringe Discord-Post');
     return;
   }
   const top5 = einsaetze.slice(0, 5).join('\n');
   const message = `🚒 **Aktuelle Einsätze** 🚒\n\n${top5}`;
+  console.log('[run] Erstelle Nachricht mit Top 5 Einträgen');
   await postToDiscord(message);
+  console.log('[run] Zyklus beendet');
 }
 
-// Sofortiger Start und Intervall setzen
+// Script starten und Intervall setzen
+console.log('[index.js] Skript gestartet, führe run() alle', FETCH_INTERVAL / 1000, 'Sekunden aus');
 run();
 setInterval(run, FETCH_INTERVAL);
