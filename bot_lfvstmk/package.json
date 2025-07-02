@@ -1,11 +1,7 @@
 {
-  "name": "feuerwehr-discord-bot",
-  "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "start": "node index.js"
-  },
+  "type": "module",
   "dependencies": {
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^3.3.2",
+    "dotenv": "^16.4.5"
   }
 }
