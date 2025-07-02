@@ -1,57 +1,56 @@
-const fetch = require("node-fetch");
+import fetch from 'node-fetch';
+import { config } from 'dotenv';
+config(); // Für Zugriff auf DISCORD_WEBHOOK
 
-const WEBHOOK_URL = process.env.DISCORD_WEBHOOK;
+const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
 const CSV_URL = "https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Public.aspx?view=24";
 
-async function fetchEinsaetze() {
-  const res = await fetch(CSV_URL);
-  const text = await res.text();
-
-  const lines = text.trim().split("\n");
-  const headers = lines[0].split(";");
-  const einsaetze = lines.slice(1).slice(0, 5).map(line => {
-    const parts = line.split(";");
-    const eintrag = {};
-    headers.forEach((h, i) => eintrag[h] = parts[i]);
-    return eintrag;
+// 👇 Hilfsfunktion: CSV in JSON umwandeln
+function parseCSV(csvText) {
+  const lines = csvText.trim().split('\n');
+  const headers = lines.shift().split(';');
+  return lines.map(line => {
+    const values = line.split(';');
+    return headers.reduce((obj, header, i) => {
+      obj[header.trim()] = values[i]?.trim();
+      return obj;
+    }, {});
   });
-
-  return einsaetze;
 }
 
-async function postToDiscord(einsaetze) {
-  if (!WEBHOOK_URL) {
-    console.error("❌ Kein Webhook gesetzt! DISCORD_WEBHOOK fehlt.");
-    return;
-  }
-
-  if (!einsaetze.length) {
-    console.log("⚠️ Keine Einsätze gefunden.");
-    return;
-  }
-
-  const content = "**🚨 Aktuelle Feuerwehreinsätze (Top 5)**\n\n" + einsaetze.map(e =>
-    `📍 **${e.s_name}** – ${e.tycod} (${e.sub_tycod}) am ${e.date}`
-  ).join("\n");
-
-  const response = await fetch(WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content })
-  });
-
-  if (response.ok) {
-    console.log("✅ Erfolgreich an Discord gesendet.");
-  } else {
-    console.error(`❌ Fehler beim Senden: ${response.status}`);
-  }
-}
-
-(async () => {
+async function main() {
   try {
-    const einsaetze = await fetchEinsaetze();
-    await postToDiscord(einsaetze);
+    console.log("🔄 CSV wird abgerufen...");
+    const res = await fetch(CSV_URL);
+    if (!res.ok) throw new Error("Download fehlgeschlagen");
+    const csv = await res.text();
+    const daten = parseCSV(csv);
+
+    // 🔎 Optional: Filter nur aktuelle Einsätze
+    const heute = new Date().toISOString().slice(0, 10).split("-").reverse().join(".");
+    const aktuelleEinsaetze = daten.filter(e => e.date === heute);
+
+    if (aktuelleEinsaetze.length === 0) {
+      console.log("ℹ️ Keine Einsätze für heute.");
+      return;
+    }
+
+    for (const einsatz of aktuelleEinsaetze.slice(0, 5)) {
+      const nachricht = `🚒 **${einsatz.sub_tycod}** in ${einsatz.s_name} (${einsatz.dgroup}) – ${einsatz.tycod}`;
+      console.log("📤 Sende an Discord:", nachricht);
+
+      await fetch(DISCORD_WEBHOOK, {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: nachricht })
+      });
+    }
+
+    console.log("✅ Alles erledigt!");
+
   } catch (err) {
-    console.error("❌ Script-Fehler:", err.message);
+    console.error("❌ Fehler:", err.message);
   }
-})();
+}
+
+main();
