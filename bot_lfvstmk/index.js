@@ -1,12 +1,18 @@
 // index.js
 
 // Benötigte Pakete: axios, cheerio
-// Für den Test-Webhook: Hier deine Discord-Webhook-URL eintragen (inkl. ID & Token)
+// Für den Test-Webhook: Hier deine Discord-Webhook-URL eintragen
 const WEBHOOK_URL = 'https://discord.com/api/webhooks/1389898593862811709/ugPbqAqMqvOzJyGkkdPB1jKGcBOEx3OX2Zzd1NKTV8ZSpLc8i1FRvHLSSMEzyhCc2qUo';
 const FETCH_INTERVAL = 5 * 60 * 1000; // alle 5 Minuten
+const REQUEST_TIMEOUT = 10000; // 10 Sekunden Timeout für HTTP-Anfragen
 
 const axios = require('axios');
 const cheerio = require('cheerio');
+
+// Axios-Instance mit Timeout konfigurieren
+const http = axios.create({
+  timeout: REQUEST_TIMEOUT
+});
 
 // Ziel-URL und Parameter
 const BASE_URL = 'https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Liste_App_Public.html';
@@ -19,7 +25,7 @@ const PARAMS = {
 async function fetchEinsaetze() {
   console.log('[fetchEinsaetze] Starte Abruf der Einsatzdaten von:', BASE_URL);
   try {
-    const resp = await axios.get(BASE_URL, { params: PARAMS });
+    const resp = await http.get(BASE_URL, { params: PARAMS });
     console.log('[fetchEinsaetze] Daten empfangen, HTTP-Status:', resp.status);
     const $ = cheerio.load(resp.data);
     const einsaetze = [];
@@ -36,7 +42,11 @@ async function fetchEinsaetze() {
     console.log(`[fetchEinsaetze] HTML geparsed, Einträge gefunden: ${einsaetze.length}`);
     return einsaetze;
   } catch (err) {
-    console.error('[fetchEinsaetze] Fehler beim Abrufen der Einsätze:', err.message);
+    if (err.code === 'ECONNABORTED') {
+      console.error('[fetchEinsaetze] Fehler: Anfrage Timeout nach', REQUEST_TIMEOUT, 'ms');
+    } else {
+      console.error('[fetchEinsaetze] Fehler beim Abrufen der Einsätze:', err.code || err.message);
+    }
     return [];
   }
 }
@@ -51,10 +61,10 @@ async function postToDiscord(content) {
   }
   try {
     console.log('[postToDiscord] Payload:', content.replace(/\n/g, ' | '));
-    const resp = await axios.post(WEBHOOK_URL, { content });
+    const resp = await http.post(WEBHOOK_URL, { content });
     console.log('[postToDiscord] Nachricht gesendet, HTTP-Status:', resp.status);
   } catch (err) {
-    console.error('[postToDiscord] Fehler beim Senden an Discord:', err.message);
+    console.error('[postToDiscord] Fehler beim Senden an Discord:', err.code || err.message);
   }
 }
 
