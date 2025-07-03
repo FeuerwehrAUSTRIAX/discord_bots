@@ -5,9 +5,13 @@ require('dotenv').config();
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
+// === CONFIG ===
 const CHANNEL_ID = process.env.CHANNEL_ID;
-const CSV_URL = process.env.CSV_URL;
+const BOT_TOKEN = process.env.BOT_TOKEN;
 const TIMEZONE = 'Europe/Vienna';
+
+// Direkt eingebetteter CSV-Link
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQJhQbJMxG8s7oSw__c97Z55koBtE2Dlgc0OYR8idpZtdTq3o9g7LbmyEve3KPNkV5yaRZGIHVjJPkk/pub?gid=1016482411&single=true&output=csv";
 
 client.once('ready', async () => {
   console.log(`✅ Bot eingeloggt als ${client.user.tag}`);
@@ -58,4 +62,4 @@ function starteWochenplaner() {
   }, delay);
 }
 
-client.login(process.env.BOT_TOKEN);
+client.login(BOT_TOKEN);
