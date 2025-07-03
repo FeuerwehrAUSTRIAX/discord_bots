@@ -1,16 +1,15 @@
-const { Client, GatewayIntentBits } = require('discord.js');
-const fetch = require('node-fetch');
-const { DateTime } = require('luxon');
-require('dotenv').config();
+import { Client, GatewayIntentBits } from 'discord.js';
+import fetch from 'node-fetch';
+import { DateTime } from 'luxon';
+import dotenv from 'dotenv';
+dotenv.config();
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// === CONFIG ===
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TIMEZONE = 'Europe/Vienna';
 
-// Direkt eingebetteter CSV-Link
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQJhQbJMxG8s7oSw__c97Z55koBtE2Dlgc0OYR8idpZtdTq3o9g7LbmyEve3KPNkV5yaRZGIHVjJPkk/pub?gid=1016482411&single=true&output=csv";
 
 client.once('ready', async () => {
@@ -24,7 +23,7 @@ async function sendeStatistik() {
     const response = await fetch(CSV_URL);
     const csv = await response.text();
 
-    const rows = csv.split('\n').slice(1); // Header entfernen
+    const rows = csv.split('\n').slice(1);
     const einsaetze = rows.map(r => r.split(',')).filter(r => r.length > 2);
 
     const jetzt = DateTime.now().setZone(TIMEZONE);
@@ -60,7 +59,7 @@ function starteWochenplaner() {
 
   setTimeout(() => {
     sendeStatistik();
-    setInterval(sendeStatistik, 7 * 24 * 60 * 60 * 1000); // jede Woche
+    setInterval(sendeStatistik, 7 * 24 * 60 * 60 * 1000);
   }, delay);
 }
 
