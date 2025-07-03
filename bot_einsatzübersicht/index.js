@@ -1,4 +1,4 @@
-// Feuerwehr Statistik-Bot mit erweiterten Details & schöner Formatierung
+// Feuerwehr Statistik-Bot mit Details & stabiler JSON-Auswertung
 import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
 import fetch from 'node-fetch';
 import { DateTime } from 'luxon';
@@ -58,7 +58,8 @@ async function sendeStatistik() {
       const fahrzeuge = {};
       const personalCounter = new Set();
       const wetter = {};
-      const besondereLeute = { 'Bundesfeuerwehrpräsident': 0 };
+      const erwähnungen = {};
+      let mitgliederGesamt = 0;
 
       for (const r of relevant) {
         const stichwort = r[11]?.trim().toUpperCase();
@@ -72,42 +73,50 @@ async function sendeStatistik() {
         else arten.Sonstige++;
 
         try {
-          const fzg = JSON.parse(fzgJson);
+          const fzg = JSON.parse(fzgJson.replace(/""/g, '"'));
           for (const dat of fzg) {
-            const key = dat.fahrzeugName || dat.kennzeichen;
+            const key = dat.fahrzeugName || dat.kennzeichen || "Unbekannt";
             fahrzeuge[key] = (fahrzeuge[key] || 0) + 1;
           }
         } catch {}
 
         try {
           const gruppe = JSON.parse(mannschaftJson);
-          for (const fzgKey in gruppe) {
-            for (const i in gruppe[fzgKey]) {
-              const mitglied = gruppe[fzgKey][i];
-              const name = mitglied.displayText;
-              if (name?.includes('Bundesfeuerwehrpräsident')) besondereLeute['Bundesfeuerwehrpräsident']++;
-              personalCounter.add(name);
-            }
-          }
+          Object.values(gruppe).forEach(gruppe => {
+            Object.values(gruppe).forEach(mitglied => {
+              const name = mitglied?.displayText?.trim();
+              if (name) {
+                personalCounter.add(name);
+                erwähnungen[name] = (erwähnungen[name] || 0) + 1;
+                mitgliederGesamt++;
+              }
+            });
+          });
         } catch {}
 
-        if (wetterTyp) wetter[wetterTyp] = (wetter[wetterTyp] || 0) + 1;
+        if (wetterTyp) {
+          const parts = wetterTyp.split(/[,|]/).map(w => w.trim()).filter(Boolean);
+          for (const w of parts) wetter[w] = (wetter[w] || 0) + 1;
+        }
       }
 
       const topFahrzeuge = Object.entries(fahrzeuge).sort((a, b) => b[1] - a[1]).slice(0, 3);
       const wettertext = Object.entries(wetter).map(([k, v]) => `${k}: ${v}`).join(' | ');
 
+      const gesamt = relevant.length;
+      const prozent = (n) => gesamt ? ((n / gesamt) * 100).toFixed(1) : 0;
+
       const embed = new EmbedBuilder()
-        .setColor(0x3498db)
+        .setColor(0x1f8b4c)
         .setTitle(`📊 ${z.name}`)
         .setDescription(
           `📅 Zeitraum: ${z.start.toFormat('dd.MM.yyyy')} – ${z.end.toFormat('dd.MM.yyyy')}\n` +
-          `📈 **Gesamteinsätze:** ${relevant.length}\n` +
-          `🔥 Brand: ${arten.Brand} | 🔧 Technisch: ${arten.Technisch} | ☣️ Schadstoff: ${arten.Schadstoff} | ➕ Sonstige: ${arten.Sonstige}\n` +
-          `🚒 **Top-Fahrzeuge:**\n${topFahrzeuge.map(([k, v]) => `• ${k}: ${v}x`).join('\n')}\n` +
+          `📈 **Gesamteinsätze:** ${gesamt}\n` +
+          `🔥 Brand: ${arten.Brand} (${prozent(arten.Brand)}%) | 🔧 Technisch: ${arten.Technisch} (${prozent(arten.Technisch)}%)\n☣️ Schadstoff: ${arten.Schadstoff} (${prozent(arten.Schadstoff)}%) | ➕ Sonstige: ${arten.Sonstige} (${prozent(arten.Sonstige)}%)\n` +
+          (topFahrzeuge.length ? `🚒 **Top-Fahrzeuge:**\n${topFahrzeuge.map(([k, v]) => `• ${k}: ${v}x`).join('\n')}\n` : '') +
           `👥 **Einsatzkräfte gesamt:** ${personalCounter.size}\n` +
-          `🌤️ **Wetterbedingungen:** ${wettertext}\n` +
-          `🎖️ **Bundesfeuerwehrpräsident-Einsätze:** ${besondereLeute['Bundesfeuerwehrpräsident']}`
+          `👤 **Ø pro Einsatz:** ${gesamt ? (mitgliederGesamt / gesamt).toFixed(1) : 0} Personen\n` +
+          (wettertext ? `🌤️ **Wetterbedingungen:** ${wettertext}\n` : '')
         )
         .setTimestamp();
 
