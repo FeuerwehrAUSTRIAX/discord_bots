@@ -12,14 +12,14 @@ const TIMEZONE = 'Europe/Vienna';
 
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQJhQbJMxG8s7oSw__c97Z55koBtE2Dlgc0OYR8idpZtdTq3o9g7LbmyEve3KPNkV5yaRZGIHVjJPkk/pub?gid=1016482411&single=true&output=csv";
 
-// 🔤 Farblogik je nach Einsatzstichwort
+// 🔤 Farbe abhängig vom Stichwort
 function getEmbedColor(stichwort) {
   const code = stichwort?.toUpperCase().trim() || "";
   if (code.startsWith("B")) return 0xe74c3c; // Rot
   if (code.startsWith("T")) return 0x3498db; // Blau
   if (code.startsWith("S")) return 0xf1c40f; // Gelb
   if (["SD", "SOF", "Z", "D"].some(prefix => code.startsWith(prefix))) return 0x2ecc71; // Grün
-  return 0x95a5a6; // Grau (unbekannt)
+  return 0x95a5a6; // Grau
 }
 
 client.once('ready', async () => {
@@ -68,11 +68,11 @@ async function sendeStatistik() {
 
       const embed = new EmbedBuilder()
         .setColor(getEmbedColor(stichwort))
-        .setTitle(`#${nummer} – ${objekt !== "k.a." ? objekt : `${strasse}, ${plz} ${bezirk}`}`)
+        .setTitle(`#${nummer} – ${stichwort}`)
         .setDescription(
           `📅 **Datum:** ${datum} – ${uhrzeit} Uhr\n` +
           `📍 **Ort:** ${strasse}, ${plz} ${bezirk}\n` +
-          `🚨 **Stichwort:** ${stichwort}`
+          `🏢 **Objekt:** ${objekt}`
         )
         .setTimestamp();
 
@@ -90,7 +90,7 @@ function starteWochenplaner() {
 
   setTimeout(() => {
     sendeStatistik();
-    setInterval(sendeStatistik, 7 * 24 * 60 * 60 * 1000);
+    setInterval(sendeStatistik, 7 * 24 * 60 * 60 * 1000); // wöchentlich
   }, delay);
 }
 
