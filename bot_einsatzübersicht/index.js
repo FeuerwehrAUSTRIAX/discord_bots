@@ -64,7 +64,7 @@ async function sendeStatistik() {
       for (const r of relevant) {
         const stichwort = r[11]?.trim().toUpperCase();
         const fzgJson = r[32]?.trim();
-        const mannschaftJson = r[33]?.trim();
+        const eingesetzteMannschaft = parseInt(r[33]?.trim()) || 0;
         const wetterTyp = r[17]?.trim();
 
         if (stichwort?.startsWith("B")) arten.Brand++;
@@ -80,19 +80,7 @@ async function sendeStatistik() {
           }
         } catch {}
 
-        try {
-          const gruppe = JSON.parse(mannschaftJson);
-          Object.values(gruppe).forEach(gruppe => {
-            Object.values(gruppe).forEach(mitglied => {
-              const name = mitglied?.displayText?.trim();
-              if (name) {
-                personalCounter.add(name);
-                erwähnungen[name] = (erwähnungen[name] || 0) + 1;
-                mitgliederGesamt++;
-              }
-            });
-          });
-        } catch {}
+        mitgliederGesamt += eingesetzteMannschaft;
 
         if (wetterTyp) {
           const parts = wetterTyp.split(/[,|]/).map(w => w.trim()).filter(Boolean);
@@ -114,7 +102,7 @@ async function sendeStatistik() {
           `📈 **Gesamteinsätze:** ${gesamt}\n` +
           `🔥 Brand: ${arten.Brand} (${prozent(arten.Brand)}%) | 🔧 Technisch: ${arten.Technisch} (${prozent(arten.Technisch)}%)\n☣️ Schadstoff: ${arten.Schadstoff} (${prozent(arten.Schadstoff)}%) | ➕ Sonstige: ${arten.Sonstige} (${prozent(arten.Sonstige)}%)\n` +
           (topFahrzeuge.length ? `🚒 **Top-Fahrzeuge:**\n${topFahrzeuge.map(([k, v]) => `• ${k}: ${v}x`).join('\n')}\n` : '') +
-          `👥 **Einsatzkräfte gesamt:** ${personalCounter.size}\n` +
+          `👥 **Einsatzkräfte gesamt:** ${mitgliederGesamt}\n` +
           `👤 **Ø pro Einsatz:** ${gesamt ? (mitgliederGesamt / gesamt).toFixed(1) : 0} Personen\n` +
           (wettertext ? `🌤️ **Wetterbedingungen:** ${wettertext}\n` : '')
         )
