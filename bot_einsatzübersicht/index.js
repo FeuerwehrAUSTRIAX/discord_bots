@@ -1,5 +1,5 @@
-// Erweiterter Feuerwehr Statistik-Bot mit Textauswertungen
-import { Client, GatewayIntentBits } from 'discord.js';
+// Feuerwehr Statistik-Bot mit erweiterten Details & schöner Formatierung
+import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
 import fetch from 'node-fetch';
 import { DateTime } from 'luxon';
 import dotenv from 'dotenv';
@@ -56,45 +56,62 @@ async function sendeStatistik() {
 
       const arten = { Brand: 0, Technisch: 0, Schadstoff: 0, Sonstige: 0 };
       const fahrzeuge = {};
-      let personenGesamt = 0;
-      let personenAnzahl = 0;
+      const personalCounter = new Set();
+      const wetter = {};
+      const besondereLeute = { 'Bundesfeuerwehrpräsident': 0 };
 
       for (const r of relevant) {
         const stichwort = r[11]?.trim().toUpperCase();
-        const mannschaft = parseInt(r[33]?.trim()) || 0;
-        const fzg = r[32]?.split(',').map(f => f.trim()) || [];
+        const fzgJson = r[32]?.trim();
+        const mannschaftJson = r[33]?.trim();
+        const wetterTyp = r[17]?.trim();
 
-        if (stichwort.startsWith("B")) arten.Brand++;
-        else if (stichwort.startsWith("T")) arten.Technisch++;
-        else if (stichwort.startsWith("S")) arten.Schadstoff++;
+        if (stichwort?.startsWith("B")) arten.Brand++;
+        else if (stichwort?.startsWith("T")) arten.Technisch++;
+        else if (stichwort?.startsWith("S")) arten.Schadstoff++;
         else arten.Sonstige++;
 
-        for (const f of fzg) {
-          if (!f) continue;
-          fahrzeuge[f] = (fahrzeuge[f] || 0) + 1;
-        }
+        try {
+          const fzg = JSON.parse(fzgJson);
+          for (const dat of fzg) {
+            const key = dat.fahrzeugName || dat.kennzeichen;
+            fahrzeuge[key] = (fahrzeuge[key] || 0) + 1;
+          }
+        } catch {}
 
-        if (mannschaft > 0) {
-          personenGesamt += mannschaft;
-          personenAnzahl++;
-        }
+        try {
+          const gruppe = JSON.parse(mannschaftJson);
+          for (const fzgKey in gruppe) {
+            for (const i in gruppe[fzgKey]) {
+              const mitglied = gruppe[fzgKey][i];
+              const name = mitglied.displayText;
+              if (name?.includes('Bundesfeuerwehrpräsident')) besondereLeute['Bundesfeuerwehrpräsident']++;
+              personalCounter.add(name);
+            }
+          }
+        } catch {}
+
+        if (wetterTyp) wetter[wetterTyp] = (wetter[wetterTyp] || 0) + 1;
       }
 
-      const topFahrzeuge = Object.entries(fahrzeuge)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 3)
-        .map(([f, c]) => `• ${f}: ${c}x`)
-        .join('\n');
+      const topFahrzeuge = Object.entries(fahrzeuge).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      const wettertext = Object.entries(wetter).map(([k, v]) => `${k}: ${v}`).join(' | ');
 
-      const bericht = [
-        `📊 **${z.name} (${z.start.toFormat('dd.MM.yyyy')} – ${z.end.toFormat('dd.MM.yyyy')})**`,
-        `• Gesamteinsätze: ${relevant.length}`,
-        `• 🔥 Brand: ${arten.Brand} | 🔧 Technisch: ${arten.Technisch} | ☣️ Schadstoff: ${arten.Schadstoff} | ➕ Sonstige: ${arten.Sonstige}`,
-        topFahrzeuge ? `• 🚒 Top-Fahrzeuge:\n${topFahrzeuge}` : null,
-        personenAnzahl > 0 ? `• 👥 Durchschnittlich ${Math.round(personenGesamt / personenAnzahl)} Einsatzkräfte` : null
-      ].filter(Boolean).join('\n');
+      const embed = new EmbedBuilder()
+        .setColor(0x3498db)
+        .setTitle(`📊 ${z.name}`)
+        .setDescription(
+          `📅 Zeitraum: ${z.start.toFormat('dd.MM.yyyy')} – ${z.end.toFormat('dd.MM.yyyy')}\n` +
+          `📈 **Gesamteinsätze:** ${relevant.length}\n` +
+          `🔥 Brand: ${arten.Brand} | 🔧 Technisch: ${arten.Technisch} | ☣️ Schadstoff: ${arten.Schadstoff} | ➕ Sonstige: ${arten.Sonstige}\n` +
+          `🚒 **Top-Fahrzeuge:**\n${topFahrzeuge.map(([k, v]) => `• ${k}: ${v}x`).join('\n')}\n` +
+          `👥 **Einsatzkräfte gesamt:** ${personalCounter.size}\n` +
+          `🌤️ **Wetterbedingungen:** ${wettertext}\n` +
+          `🎖️ **Bundesfeuerwehrpräsident-Einsätze:** ${besondereLeute['Bundesfeuerwehrpräsident']}`
+        )
+        .setTimestamp();
 
-      await channel.send({ content: bericht });
+      await channel.send({ embeds: [embed] });
     }
   } catch (err) {
     console.error('❌ Fehler beim Senden der Statistik:', err);
