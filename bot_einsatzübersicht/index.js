@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
 import fetch from 'node-fetch';
 import { DateTime } from 'luxon';
 import dotenv from 'dotenv';
@@ -10,8 +10,17 @@ const CHANNEL_ID = process.env.CHANNEL_ID;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TIMEZONE = 'Europe/Vienna';
 
-// CSV direkt eingebettet
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQJhQbJMxG8s7oSw__c97Z55koBtE2Dlgc0OYR8idpZtdTq3o9g7LbmyEve3KPNkV5yaRZGIHVjJPkk/pub?gid=1016482411&single=true&output=csv";
+
+// 🔤 Farblogik je nach Einsatzstichwort
+function getEmbedColor(stichwort) {
+  const code = stichwort?.toUpperCase().trim() || "";
+  if (code.startsWith("B")) return 0xe74c3c; // Rot
+  if (code.startsWith("T")) return 0x3498db; // Blau
+  if (code.startsWith("S")) return 0xf1c40f; // Gelb
+  if (["SD", "SOF", "Z", "D"].some(prefix => code.startsWith(prefix))) return 0x2ecc71; // Grün
+  return 0x95a5a6; // Grau (unbekannt)
+}
 
 client.once('ready', async () => {
   console.log(`✅ Bot eingeloggt als ${client.user.tag}`);
@@ -36,32 +45,41 @@ async function sendeStatistik() {
       return datum.isValid && datum >= letzterMontag && datum <= letzterSonntag;
     });
 
-    const statistikText = `📊 **Einsatzstatistik (${letzterMontag.toFormat('dd.MM.yyyy')} – ${letzterSonntag.toFormat('dd.MM.yyyy')})**\n\n` +
-      `📈 **Gesamteinsätze: ${gefiltert.length}**\n` +
-      (gefiltert.length === 0
-        ? '\n_Keine Einsätze in diesem Zeitraum._'
-        : '\n❗ **Einsatzübersicht:**\n\n' +
-          gefiltert.map((r) => {
-            const nummer = r[0]?.trim() || "k.a.";
-            const datum = DateTime.fromFormat(r[1], "d.M.yyyy", { zone: TIMEZONE }).toFormat("dd.MM.yyyy");
-            const uhrzeit = r[2]?.trim() || "k.a.";
-            const objekt = r[5]?.trim() || "k.a.";
-            const bezirk = r[6]?.trim() || "k.a.";
-            const strasse = r[7]?.trim() || "k.a.";
-            const plz = r[9]?.trim() || "k.a.";
-            const stichwort = r[11]?.trim() || "k.a.";
-
-            return `**#${nummer}** – **${datum} – ${uhrzeit} Uhr**\n` +
-                   `🏢 **Objekt:** ${objekt}\n` +
-                   `📍 **Ort:** ${strasse}, ${plz} ${bezirk}\n` +
-                   `🚨 **Stichwort:** ${stichwort}\n` +
-                   `────────────────────`;
-          }).join('\n\n'));
-
     const channel = await client.channels.fetch(CHANNEL_ID);
-    await channel.send(statistikText);
+    if (!channel) return console.error("❌ Channel nicht gefunden");
+
+    if (gefiltert.length === 0) {
+      await channel.send(`📊 **Einsatzstatistik (${letzterMontag.toFormat('dd.MM.yyyy')} – ${letzterSonntag.toFormat('dd.MM.yyyy')})**\n\n_Keine Einsätze in diesem Zeitraum._`);
+      return;
+    }
+
+    await channel.send(`📊 **Einsatzstatistik (${letzterMontag.toFormat('dd.MM.yyyy')} – ${letzterSonntag.toFormat('dd.MM.yyyy')})**\n📈 **Gesamteinsätze: ${gefiltert.length}**\n`);
+
+    for (const r of gefiltert) {
+      const nummer = r[0]?.trim() || "k.a.";
+      const datumObj = DateTime.fromFormat(r[1], "d.M.yyyy", { zone: TIMEZONE });
+      const datum = datumObj.isValid ? datumObj.toFormat("dd.MM.yyyy") : "k.a.";
+      const uhrzeit = r[2]?.trim() || "k.a.";
+      const objekt = r[5]?.trim() || "k.a.";
+      const bezirk = r[6]?.trim() || "k.a.";
+      const strasse = r[7]?.trim() || "k.a.";
+      const plz = r[9]?.trim() || "k.a.";
+      const stichwort = r[11]?.trim() || "k.a.";
+
+      const embed = new EmbedBuilder()
+        .setColor(getEmbedColor(stichwort))
+        .setTitle(`#${nummer} – ${objekt !== "k.a." ? objekt : `${strasse}, ${plz} ${bezirk}`}`)
+        .setDescription(
+          `📅 **Datum:** ${datum} – ${uhrzeit} Uhr\n` +
+          `📍 **Ort:** ${strasse}, ${plz} ${bezirk}\n` +
+          `🚨 **Stichwort:** ${stichwort}`
+        )
+        .setTimestamp();
+
+      await channel.send({ embeds: [embed] });
+    }
   } catch (err) {
-    console.error('Fehler beim Senden der Statistik:', err);
+    console.error('❌ Fehler beim Senden der Statistik:', err);
   }
 }
 
