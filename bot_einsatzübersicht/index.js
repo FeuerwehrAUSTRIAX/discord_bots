@@ -53,8 +53,136 @@ async function sendeStatistik() {
       return;
     }
 
-    await channel.send(`📊 **Einsatzstatistik (${letzterMontag.toFormat('dd.MM.yyyy')} – ${letzterSonntag.toFormat('dd.MM.yyyy')})**\n📈 **Gesamteinsätze: ${gefiltert.length}**\n`);
+    // === Statistik vorbereiten ===
+    const einsatzarten = { Brand: 0, Technisch: 0, Schadstoff: 0, Sonstige: 0 };
+    const stichwortStats = {};
+    const ortStats = {};
 
+    for (const r of gefiltert) {
+      const stichwort = r[11]?.trim().toUpperCase();
+      const strasse = r[7]?.trim();
+
+      if (!stichwort) continue;
+
+      if (stichwort.startsWith("B")) einsatzarten.Brand++;
+      else if (stichwort.startsWith("T")) einsatzarten.Technisch++;
+      else if (stichwort.startsWith("S")) einsatzarten.Schadstoff++;
+      else einsatzarten.Sonstige++;
+
+      stichwortStats[stichwort] = (stichwortStats[stichwort] || 0) + 1;
+      if (strasse) ortStats[strasse] = (ortStats[strasse] || 0) + 1;
+    }
+
+    // === Textbericht ===
+    const bericht = [
+      `📊 **Einsatzstatistik (${letzterMontag.toFormat('dd.MM.yyyy')} – ${letzterSonntag.toFormat('dd.MM.yyyy')})**`,
+      `📈 **Gesamteinsätze:** ${gefiltert.length}`,
+      ``,
+      `🔥 **Einsatzarten:**`,
+      `• Brand: ${einsatzarten.Brand}`,
+      `• Technisch: ${einsatzarten.Technisch}`,
+      `• Schadstoff: ${einsatzarten.Schadstoff}`,
+      `• Sonstige: ${einsatzarten.Sonstige}`
+    ].join("\n");
+
+    await channel.send({ content: bericht });
+
+    // === Diagramm 1: Kategorieverteilung ===
+    const chart1 = "https://quickchart.io/chart?c=" + encodeURIComponent(JSON.stringify({
+      type: "pie",
+      data: {
+        labels: ["Brand", "Technisch", "Schadstoff", "Sonstige"],
+        datasets: [{
+          data: [
+            einsatzarten.Brand,
+            einsatzarten.Technisch,
+            einsatzarten.Schadstoff,
+            einsatzarten.Sonstige
+          ],
+          backgroundColor: ["#e74c3c", "#3498db", "#f1c40f", "#95a5a6"]
+        }]
+      },
+      options: {
+        plugins: {
+          title: {
+            display: true,
+            text: "Einsätze nach Kategorie"
+          }
+        }
+      }
+    }));
+
+    await channel.send({
+      content: `📊 **Diagramm: Einsätze nach Hauptkategorie**`,
+      files: [chart1]
+    });
+
+    // === Diagramm 2: Top-Stichworte ===
+    const topStichworte = Object.entries(stichwortStats)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 7);
+
+    if (topStichworte.length > 0) {
+      const chart2 = "https://quickchart.io/chart?c=" + encodeURIComponent(JSON.stringify({
+        type: "bar",
+        data: {
+          labels: topStichworte.map(([k]) => k),
+          datasets: [{
+            label: "Einsätze",
+            data: topStichworte.map(([, v]) => v),
+            backgroundColor: "#e67e22"
+          }]
+        },
+        options: {
+          plugins: {
+            title: {
+              display: true,
+              text: "Top-Stichworte"
+            }
+          }
+        }
+      }));
+
+      await channel.send({
+        content: `📊 **Diagramm: Häufigste Einsatzstichworte**`,
+        files: [chart2]
+      });
+    }
+
+    // === Diagramm 3: Top-Einsatzorte ===
+    const topOrte = Object.entries(ortStats)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    if (topOrte.length > 0) {
+      const chart3 = "https://quickchart.io/chart?c=" + encodeURIComponent(JSON.stringify({
+        type: "bar",
+        data: {
+          labels: topOrte.map(([k]) => k),
+          datasets: [{
+            label: "Einsätze",
+            data: topOrte.map(([, v]) => v),
+            backgroundColor: "#2ecc71"
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          plugins: {
+            title: {
+              display: true,
+              text: "Einsatz-Hotspots (Straßen)"
+            }
+          }
+        }
+      }));
+
+      await channel.send({
+        content: `📊 **Diagramm: Top-Einsatzorte**`,
+        files: [chart3]
+      });
+    }
+
+    // === Einzel-Einsätze als Embeds ===
     for (const r of gefiltert) {
       const nummer = r[0]?.trim() || "k.a.";
       const datumObj = DateTime.fromFormat(r[1], "d.M.yyyy", { zone: TIMEZONE });
@@ -78,6 +206,7 @@ async function sendeStatistik() {
 
       await channel.send({ embeds: [embed] });
     }
+
   } catch (err) {
     console.error('❌ Fehler beim Senden der Statistik:', err);
   }
