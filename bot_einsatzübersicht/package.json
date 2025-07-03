@@ -1,0 +1,16 @@
+{
+  "name": "einsatzstatistik-bot",
+  "version": "1.0.0",
+  "description": "Discord Bot für Feuerwehr-Einsatzstatistik",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "dotenv": "^16.4.0",
+    "luxon": "^3.4.4",
+    "node-fetch": "^3.3.2"
+  },
+  "type": "module"
+}
