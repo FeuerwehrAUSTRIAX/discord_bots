@@ -10,6 +10,7 @@ const CHANNEL_ID = process.env.CHANNEL_ID;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const TIMEZONE = 'Europe/Vienna';
 
+// CSV direkt eingebettet
 const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQJhQbJMxG8s7oSw__c97Z55koBtE2Dlgc0OYR8idpZtdTq3o9g7LbmyEve3KPNkV5yaRZGIHVjJPkk/pub?gid=1016482411&single=true&output=csv";
 
 client.once('ready', async () => {
@@ -23,7 +24,7 @@ async function sendeStatistik() {
     const response = await fetch(CSV_URL);
     const csv = await response.text();
 
-    const rows = csv.split('\n').slice(1); // Header entfernen
+    const rows = csv.split('\n').slice(1);
     const einsaetze = rows.map(r => r.split(',')).filter(r => r.length > 2);
 
     const jetzt = DateTime.now().setZone(TIMEZONE);
@@ -40,17 +41,21 @@ async function sendeStatistik() {
       (gefiltert.length === 0
         ? '\n_Keine Einsätze in diesem Zeitraum._'
         : '\n❗ **Einsatzübersicht:**\n\n' +
-          gefiltert.map((r, i) => {
-            const nummer = r[0]?.trim() || "---";
+          gefiltert.map((r) => {
+            const nummer = r[0]?.trim() || "k.a.";
             const datum = DateTime.fromFormat(r[1], "d.M.yyyy", { zone: TIMEZONE }).toFormat("dd.MM.yyyy");
-            const uhrzeit = r[2]?.trim() || "---";
-            const objekt = r[5]?.trim() || "---";
-            const bezirk = r[6]?.trim() || "---";
-            const strasse = r[7]?.trim() || "---";
-            const plz = r[9]?.trim() || "---";
-            const stichwort = r[10]?.trim() || "---";
+            const uhrzeit = r[2]?.trim() || "k.a.";
+            const objekt = r[5]?.trim() || "k.a.";
+            const bezirk = r[6]?.trim() || "k.a.";
+            const strasse = r[7]?.trim() || "k.a.";
+            const plz = r[9]?.trim() || "k.a.";
+            const stichwort = r[11]?.trim() || "k.a.";
 
-            return `#${nummer} | ${datum} – ${uhrzeit} Uhr\n🏢 Objekt: ${objekt}\n📍 Ort: ${strasse}, ${plz} ${bezirk}\n🚨 Stichwort: ${stichwort}`;
+            return `**#${nummer}** – **${datum} – ${uhrzeit} Uhr**\n` +
+                   `🏢 **Objekt:** ${objekt}\n` +
+                   `📍 **Ort:** ${strasse}, ${plz} ${bezirk}\n` +
+                   `🚨 **Stichwort:** ${stichwort}\n` +
+                   `────────────────────`;
           }).join('\n\n'));
 
     const channel = await client.channels.fetch(CHANNEL_ID);
