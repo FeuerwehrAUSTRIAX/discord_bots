@@ -1,14 +1,23 @@
 import requests
 from apscheduler.schedulers.blocking import BlockingScheduler
 import os
+import logging
 
-# Ziel-URL der Einsatzdaten
+# === Logging-Konfiguration ===
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
+
+logging.info("🚀 Bot wurde gestartet!")
+
+# === Ziel-URL mit Einsatzdaten ===
 URL = "https://einsatzuebersicht.lfv.steiermark.at/lfvasp/einsatzkarte/Liste_App_Public.html?Bereich=all&param=D937D5636F31DF4D0F9CD43281AE1DC9F79040E0"
 
-# Optional: Discord-Webhook (in Railway als Secret setzen)
+# === Optional: Discord-Webhook (in Railway unter "Variables" setzen) ===
 DISCORD_WEBHOOK = os.getenv("DISCORD_WEBHOOK")
 
-# Realistische Browser-Headers
+# === Echte Browser-Headers ===
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
@@ -17,30 +26,38 @@ HEADERS = {
     "Referer": "https://einsatzuebersicht.lfv.steiermark.at/"
 }
 
+# === Hauptfunktion: Seite abrufen und ggf. an Discord schicken ===
 def scrape_and_notify():
     try:
-        print("[INFO] Abrufe Einsatzdaten...")
+        logging.info("📥 Versuche, Einsatzdaten abzurufen...")
         response = requests.get(URL, headers=HEADERS)
-        
+
         if response.status_code == 200:
             html = response.text
-
-            # Extrahiere z. B. die ersten 500 Zeichen
             snippet = html[:500]
 
-            # Schick es an Discord
+            logging.info("✅ Seite erfolgreich geladen (200 OK)")
+
             if DISCORD_WEBHOOK:
+                logging.info("📤 Sende Daten an Discord-Webhook...")
                 requests.post(DISCORD_WEBHOOK, json={
                     "content": f"🚨 Neue Einsatzdaten:\n```html\n{snippet}```"
                 })
-
-            print("[OK] Daten erfolgreich abgerufen und ggf. gesendet.")
+                logging.info("✅ Erfolgreich an Discord gesendet.")
+            else:
+                logging.warning("⚠️ Kein DISCORD_WEBHOOK gesetzt. Daten werden nur geloggt.")
         else:
-            print(f"[FEHLER] Statuscode: {response.status_code}")
-    except Exception as e:
-        print(f"[EXCEPTION] {e}")
+            logging.error(f"❌ Fehler beim Abruf: Statuscode {response.status_code}")
 
-# Scheduler für alle 5 Minuten
+    except Exception as e:
+        logging.exception("💥 Ausnahme beim Abrufen der Daten:")
+
+# === Scheduler: Alle 5 Minuten ===
 sched = BlockingScheduler()
 sched.add_job(scrape_and_notify, "interval", minutes=5)
-sched.start()
+
+# === Starte den Scheduler ===
+if __name__ == "__main__":
+    scrape_and_notify()  # einmal sofort starten
+    logging.info("⏰ Starte Scheduler (alle 5 Minuten)")
+    sched.start()
