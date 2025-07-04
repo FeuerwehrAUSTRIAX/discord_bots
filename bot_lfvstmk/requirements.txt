@@ -1,2 +1,3 @@
-requests
-apscheduler
+selenium
+beautifulsoup4
+pandas
