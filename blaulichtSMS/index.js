@@ -1,4 +1,3 @@
-// bot.js
 require('dotenv').config();
 const {
   Client,
@@ -7,12 +6,7 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Collection,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  StringSelectMenuBuilder,
-  StringSelectMenuOptionBuilder
+  Collection
 } = require('discord.js');
 
 const client = new Client({
@@ -25,7 +19,6 @@ const client = new Client({
 
 const SOURCE_CHANNEL_ID = '1388070050061221990';
 const TARGET_CHANNEL_ID = '1294003170116239431';
-const NACHALARM_ROLE_ID = '1293999568991555667';
 
 const responseTracker = new Collection();
 
@@ -79,10 +72,18 @@ client.on('messageCreate', async (message) => {
     );
 
   const buttons = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId('come_yes').setLabel('✅ Ich komme').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId('come_no').setLabel('❌ Ich komme nicht').setStyle(ButtonStyle.Danger),
-    new ButtonBuilder().setCustomId('come_late').setLabel('🟠 Ich komme später').setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId('come_repeat').setLabel('🔁 Nachalarmieren').setStyle(ButtonStyle.Secondary)
+    new ButtonBuilder()
+      .setCustomId('come_yes')
+      .setLabel('✅ Ich komme')
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId('come_no')
+      .setLabel('❌ Ich komme nicht')
+      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId('come_late')
+      .setLabel('🟠 Ich komme später')
+      .setStyle(ButtonStyle.Primary)
   );
 
   try {
@@ -93,8 +94,7 @@ client.on('messageCreate', async (message) => {
       message: sentMessage,
       coming: [],
       notComing: [],
-      late: [],
-      nachalarmiert: false
+      late: []
     });
 
     console.log('📢 Alarmierung mit Buttons gesendet.');
@@ -104,146 +104,51 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('interactionCreate', async (interaction) => {
-  if (interaction.isButton()) {
-    const entry = responseTracker.get(interaction.message.id);
-    if (!entry) return;
+  if (!interaction.isButton()) return;
 
-    const userId = interaction.user.id;
-    entry.coming = entry.coming.filter(id => id !== userId);
-    entry.notComing = entry.notComing.filter(id => id !== userId);
-    entry.late = entry.late.filter(id => id !== userId);
+  const entry = responseTracker.get(interaction.message.id);
+  if (!entry) return;
 
-    if (interaction.customId === 'come_yes') {
-      entry.coming.push(userId);
-    } else if (interaction.customId === 'come_no') {
-      entry.notComing.push(userId);
-    } else if (interaction.customId === 'come_late') {
-      entry.late.push(userId);
-    } else if (interaction.customId === 'come_repeat') {
-      if (entry.nachalarmiert) {
-        return interaction.reply({ content: '⚠️ Es wurde bereits nachalarmiert.', ephemeral: true });
-      }
+  const userId = interaction.user.id;
+  entry.coming = entry.coming.filter(id => id !== userId);
+  entry.notComing = entry.notComing.filter(id => id !== userId);
+  entry.late = entry.late.filter(id => id !== userId);
 
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId(`select_alarmtype_${interaction.message.id}`)
-        .setPlaceholder('Alarmtyp auswählen...')
-        .addOptions(
-          new StringSelectMenuOptionBuilder().setLabel('Stiller Alarm').setValue('Stiller Alarm'),
-          new StringSelectMenuOptionBuilder().setLabel('Sirenenalarm').setValue('Sirenenalarm')
-        );
+  if (interaction.customId === 'come_yes') {
+    entry.coming.push(userId);
+  } else if (interaction.customId === 'come_no') {
+    entry.notComing.push(userId);
+  } else if (interaction.customId === 'come_late') {
+    entry.late.push(userId);
+  }
 
-      const row = new ActionRowBuilder().addComponents(selectMenu);
-
-      return interaction.reply({
-        content: 'Bitte wähle den Alarmtyp:',
-        components: [row],
-        ephemeral: true
-      });
+  const originalEmbed = interaction.message.embeds[0];
+  const newEmbed = EmbedBuilder.from(originalEmbed).setFields(
+    {
+      name: '✅ Zusagen',
+      value: entry.coming.length > 0
+        ? entry.coming.map(id => `• <@${id}>`).join('\n')
+        : 'Niemand bisher',
+      inline: true
+    },
+    {
+      name: '❌ Absagen',
+      value: entry.notComing.length > 0
+        ? entry.notComing.map(id => `• <@${id}>`).join('\n')
+        : 'Niemand bisher',
+      inline: true
+    },
+    {
+      name: '🟠 Komme später',
+      value: entry.late.length > 0
+        ? entry.late.map(id => `• <@${id}>`).join('\n')
+        : 'Niemand bisher',
+      inline: true
     }
+  );
 
-    const originalEmbed = interaction.message.embeds[0];
-    const newEmbed = EmbedBuilder.from(originalEmbed).setFields(
-      {
-        name: '✅ Zusagen',
-        value: entry.coming.length > 0 ? entry.coming.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher',
-        inline: true
-      },
-      {
-        name: '❌ Absagen',
-        value: entry.notComing.length > 0 ? entry.notComing.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher',
-        inline: true
-      },
-      {
-        name: '🟠 Komme später',
-        value: entry.late.length > 0 ? entry.late.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher',
-        inline: true
-      }
-    );
-
-    await entry.message.edit({ embeds: [newEmbed] });
-    await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
-  }
-
-  if (interaction.isStringSelectMenu() && interaction.customId.startsWith('select_alarmtype_')) {
-    const selectedAlarmtype = interaction.values[0];
-    const messageId = interaction.customId.split('select_alarmtype_')[1];
-    const entry = responseTracker.get(messageId);
-    if (!entry) return;
-
-    entry.selectedAlarmtype = selectedAlarmtype;
-
-    const modal = new ModalBuilder()
-      .setCustomId(`nachalarmieren_modal_${messageId}`)
-      .setTitle('Nachalarmieren');
-
-    const stichwortInput = new TextInputBuilder().setCustomId('stichwort').setLabel('Stichwort').setStyle(TextInputStyle.Short).setRequired(true);
-    const adresseInput = new TextInputBuilder().setCustomId('adresse').setLabel('Adresse').setStyle(TextInputStyle.Short).setRequired(true);
-    const infoInput = new TextInputBuilder().setCustomId('info').setLabel('Weitere Infos').setStyle(TextInputStyle.Paragraph).setRequired(false);
-
-    modal.addComponents(
-      new ActionRowBuilder().addComponents(stichwortInput),
-      new ActionRowBuilder().addComponents(adresseInput),
-      new ActionRowBuilder().addComponents(infoInput)
-    );
-
-    await interaction.showModal(modal);
-  }
-
-  if (interaction.isModalSubmit() && interaction.customId.startsWith('nachalarmieren_modal_')) {
-    const messageId = interaction.customId.replace('nachalarmieren_modal_', '');
-    const entry = responseTracker.get(messageId);
-    if (!entry || !entry.selectedAlarmtype) {
-      return interaction.reply({ content: '⚠️ Fehler beim Nachalarmieren (kein Alarmtyp)', ephemeral: true });
-    }
-
-    const alarmtype = entry.selectedAlarmtype;
-    const stichwort = interaction.fields.getTextInputValue('stichwort');
-    const adresse = interaction.fields.getTextInputValue('adresse');
-    const info = interaction.fields.getTextInputValue('info');
-
-    const embed = new EmbedBuilder()
-      .setColor(0xff9900)
-      .setTitle('📣 Nachalarmierung: FF Wiener Neustadt')
-      .setDescription(`**${alarmtype}** für FF Wiener Neustadt: ${stichwort} WIENER NEUSTADT-OT // ${adresse} // ${info}`)
-      .addFields(
-        { name: '✅ Zusagen', value: 'Niemand bisher', inline: true },
-        { name: '❌ Absagen', value: 'Niemand bisher', inline: true },
-        { name: '🟠 Komme später', value: 'Niemand bisher', inline: true }
-      );
-
-    const buttons = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('come_yes').setLabel('✅ Ich komme').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId('come_no').setLabel('❌ Ich komme nicht').setStyle(ButtonStyle.Danger),
-      new ButtonBuilder().setCustomId('come_late').setLabel('🟠 Ich komme später').setStyle(ButtonStyle.Primary)
-    );
-
-    const targetChannel = await client.channels.fetch(TARGET_CHANNEL_ID);
-    const sentMessage = await targetChannel.send({
-      content: `<@&${NACHALARM_ROLE_ID}>`,
-      embeds: [embed],
-      components: [buttons],
-      allowedMentions: { parse: ['roles'] }
-    });
-
-    responseTracker.set(sentMessage.id, {
-      message: sentMessage,
-      coming: [],
-      notComing: [],
-      late: [],
-      nachalarmiert: true
-    });
-
-    const updatedButtons = ActionRowBuilder.from(entry.message.components[0]);
-    const repeatButton = updatedButtons.components.find(btn => btn.data.custom_id === 'come_repeat');
-    if (repeatButton) repeatButton.setDisabled(true);
-    await entry.message.edit({ components: [updatedButtons] });
-
-    // ✅ Wichtig: Modal-Interaktion beantworten, damit kein Fehler angezeigt wird
-    await interaction.reply({
-      content: '✅ Nachalarmierung erfolgreich gesendet.',
-      ephemeral: true
-    });
-  }
+  await entry.message.edit({ embeds: [newEmbed] });
+  await interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
