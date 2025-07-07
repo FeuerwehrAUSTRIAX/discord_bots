@@ -23,8 +23,17 @@ const client = new Client({
 
 const CHANNEL_ID = '1294002165152481432';
 
+function convertToISO(dateStr) {
+  const match = /^\d{2}\.\d{2}\.\d{4}$/.exec(dateStr);
+  if (!match) throw new Error('Ungültiges Datumsformat. Bitte TT.MM.JJJJ verwenden.');
+  const [day, month, year] = dateStr.split('.');
+  return `${year}-${month}-${day}`;
+}
+
 client.once('ready', async () => {
   console.log(`✅ Bot läuft als ${client.user.tag}`);
+
+  await removeExpiredAbmeldungen();
 
   const channel = await client.channels.fetch(CHANNEL_ID);
   const pinned = await channel.messages.fetchPinned();
@@ -67,13 +76,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     const von = new TextInputBuilder()
       .setCustomId('von')
-      .setLabel('Abmeldung von (JJJJ-MM-TT)')
+      .setLabel('Abmeldung von (TT.MM.JJJJ)')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
     const bis = new TextInputBuilder()
       .setCustomId('bis')
-      .setLabel('Abmeldung bis (JJJJ-MM-TT)')
+      .setLabel('Abmeldung bis (TT.MM.JJJJ)')
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
@@ -95,15 +104,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.isModalSubmit() && interaction.customId === 'abmeldungModal') {
-    const data = {
-      dienstgrad: interaction.fields.getTextInputValue('dienstgrad'),
-      name: interaction.fields.getTextInputValue('name'),
-      von: interaction.fields.getTextInputValue('von'),
-      bis: interaction.fields.getTextInputValue('bis'),
-      uhrzeit: interaction.fields.getTextInputValue('uhrzeit') || null
-    };
-
     try {
+      const data = {
+        dienstgrad: interaction.fields.getTextInputValue('dienstgrad'),
+        name: interaction.fields.getTextInputValue('name'),
+        von: convertToISO(interaction.fields.getTextInputValue('von')),
+        bis: convertToISO(interaction.fields.getTextInputValue('bis')),
+        uhrzeit: interaction.fields.getTextInputValue('uhrzeit') || null
+      };
+
       const message = await interaction.channel.send({
         content: `📌 **Abmeldung**\n**${data.dienstgrad} ${data.name}**\n🕒 **Von:** ${data.von}  **Bis:** ${data.bis}${data.uhrzeit ? ` – ${data.uhrzeit}` : ''}`
       });
@@ -113,7 +122,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.reply({ content: '✅ Abmeldung erfolgreich eingetragen.', ephemeral: true });
     } catch (err) {
       console.error('❌ Fehler beim Eintragen:', err);
-      await interaction.reply({ content: '❌ Fehler beim Eintragen der Abmeldung.', ephemeral: true });
+      await interaction.reply({ content: '❌ Fehler beim Eintragen der Abmeldung. Bitte TT.MM.JJJJ verwenden.', ephemeral: true });
     }
   }
 });
