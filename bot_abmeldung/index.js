@@ -1,156 +1,60 @@
-// index.js
-require('dotenv').config();
-const { Client, GatewayIntentBits, Partials, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, Events } = require('discord.js');
+import { Client, GatewayIntentBits, Partials } from 'discord.js';
+import dotenv from 'dotenv';
+import { insertAbmeldung, getAbgelaufeneAbmeldungen, deleteAbmeldung } from './db.js';
+
+dotenv.config();
+
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ],
   partials: [Partials.Channel]
 });
 
-const abmeldungen = [];
-
-client.once('ready', async () => {
-  console.log(`Bot ist bereit als ${client.user.tag}`);
-
-  const channel = await client.channels.fetch('1294002165152481432');
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('abmelden')
-      .setLabel('📝 Abmelden')
-      .setStyle(ButtonStyle.Primary)
-  );
-
-  const message = await channel.send({ content: '📋 **Abmeldung vom Dienst**\nKlicke unten, um dich abzumelden:', components: [row] });
-  await message.pin();
-
-  setInterval(checkExpiredAbmeldungen, 60 * 1000);
+client.once('ready', () => {
+  console.log(`✅ Bot läuft als ${client.user.tag}`);
+  checkAbmeldungen(); // sofort prüfen beim Start
+  setInterval(checkAbmeldungen, 1000 * 60 * 60 * 24); // alle 24h
 });
 
-client.on(Events.InteractionCreate, async interaction => {
-  if (interaction.isButton() && interaction.customId === 'abmelden') {
-    const modal = new ModalBuilder()
-      .setCustomId('abmeldung_modal')
-      .setTitle('Abmeldung einreichen')
-      .addComponents(
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('dienstgrad')
-            .setLabel('Dienstgrad')
-            .setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('start')
-            .setLabel('Startdatum (TT.MM.JJJJ)')
-            .setStyle(TextInputStyle.Short)
-        ),
-        new ActionRowBuilder().addComponents(
-          new TextInputBuilder()
-            .setCustomId('ende')
-            .setLabel('Enddatum (TT.MM.JJJJ)')
-            .setStyle(TextInputStyle.Short)
-        )
-      );
+// ➕ Befehl: !abmelden Dienstgrad Vorname Nachname 2025-07-08 2025-07-14 [Uhrzeit optional]
+client.on('messageCreate', async message => {
+  if (!message.content.startsWith('!abmelden') || message.author.bot) return;
 
-    await interaction.showModal(modal);
+  const args = message.content.split(' ').slice(1);
+  const [dienstgrad, vorname, nachname, von, bis, uhrzeit] = args;
+
+  if (!dienstgrad || !vorname || !nachname || !von || !bis) {
+    return message.reply("⚠️ Format: `!abmelden Dienstgrad Vorname Nachname von bis [Uhrzeit]`");
   }
 
-  if (interaction.isModalSubmit() && interaction.customId === 'abmeldung_modal') {
-    const dienstgrad = interaction.fields.getTextInputValue('dienstgrad');
-    const start = interaction.fields.getTextInputValue('start');
-    const ende = interaction.fields.getTextInputValue('ende');
+  const channel = await client.channels.fetch(process.env.CHANNEL_ID);
+  const embedMsg = `📌 **Abmeldung**\n**${dienstgrad} ${vorname} ${nachname}**\n🕒 **Von:** ${von}  **Bis:** ${bis}${uhrzeit ? ` – ${uhrzeit}` : ''}`;
+  const sent = await channel.send(embedMsg);
+  await sent.pin();
 
-    const startDate = parseDate(start);
-    const endDate = parseDate(ende);
-    if (!startDate || !endDate) {
-      return interaction.reply({ content: '❌ Ungültiges Datum!', ephemeral: true });
-    }
-
-    const message = await interaction.channel.send(
-      `📋 Abmeldung von ${interaction.member.displayName} eingegangen!\n\n` +
-      `🔹 Dienstgrad: ${dienstgrad}\n` +
-      `🔹 Zeitraum: ${start} - ${ende}\n\n` +
-      `✅ Die Abmeldung wurde erfolgreich registriert.`
-    );
-
-    abmeldungen.push({
-      messageId: message.id,
-      channelId: message.channel.id,
-      endDate: endDate
-    });
-
-    await interaction.reply({ content: '✅ Deine Abmeldung wurde gespeichert.', ephemeral: true });
-  }
+  await insertAbmeldung({ dienstgrad, vorname, nachname, von, bis, uhrzeit: uhrzeit || null }, sent.id);
+  message.react('✅');
 });
 
-function parseDate(str) {
-  const [day, month, year] = str.split('.').map(Number);
-  if (!day || !month || !year) return null;
-  return new Date(year, month - 1, day);
-}
+async function checkAbmeldungen() {
+  const abmeldungen = await getAbgelaufeneAbmeldungen();
+  const channel = await client.channels.fetch(process.env.CHANNEL_ID);
 
-async function checkExpiredAbmeldungen() {
-  const now = new Date();
-  for (const abm of [...abmeldungen]) {
-    if (now > abm.endDate) {
-      try {
-        const channel = await client.channels.fetch(abm.channelId);
-        const msg = await channel.messages.fetch(abm.messageId);
-        await msg.delete();
-        abmeldungen.splice(abmeldungen.indexOf(abm), 1);
-      } catch (err) {
-        console.error('Fehler beim Löschen:', err);
-      }
+  for (const abmeldung of abmeldungen) {
+    try {
+      const msg = await channel.messages.fetch(abmeldung.message_id);
+      await msg.unpin();
+      await msg.delete();
+    } catch (e) {
+      console.warn(`❗️Nachricht ${abmeldung.message_id} konnte nicht entfernt werden.`);
     }
+
+    await deleteAbmeldung(abmeldung.id);
+    console.log(`🗑️ Abmeldung gelöscht: ${abmeldung.vorname} ${abmeldung.nachname}`);
   }
 }
 
-client.login(process.env.DISCORD_BOT_TOKEN);
-
-
-// .env.example
-DISCORD_BOT_TOKEN=dein-bot-token-hier
-CHANNEL_ID=1294002165152481432
-
-
-// package.json
-{
-  "name": "discord-abmeldebot-js",
-  "version": "1.0.0",
-  "main": "index.js",
-  "type": "module",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "discord.js": "^14.13.0",
-    "dotenv": "^16.3.1"
-  }
-}
-
-
-// README.md
-# Discord Abmelde-Bot (JavaScript Version)
-
-Ein einfacher Discord-Bot in Node.js zur Verwaltung von Abmeldungen mit Button + automatischer Löschung nach Zeitraumende.
-
-## ✅ Features
-- UI via Button + Modal (Eingabeformular)
-- Automatisch Name des Users
-- Nachricht wird gepinnt
-- Automatisches Löschen nach Ablauf
-
-## 🚀 Deployment auf Railway
-1. Repository auf GitHub erstellen und Code pushen
-2. Projekt bei [Railway](https://railway.app) anlegen und mit Repo verknüpfen
-3. Unter "Variables" setzen:
-   - `DISCORD_BOT_TOKEN`
-   - `CHANNEL_ID` = `1294002165152481432`
-4. Startbefehl:
-```bash
-npm start
-```
-
-## 📌 Hinweis
-- Stelle sicher, dass der Bot die richtigen Berechtigungen hat: `Nachrichten lesen/schreiben`, `Nachrichten verwalten`, `Nachrichten pinnen`
-- Datumseingabeformat: `TT.MM.JJJJ`
-- Zeitzone: Serverzeit (UTC)
+client.login(process.env.DISCORD_TOKEN);
