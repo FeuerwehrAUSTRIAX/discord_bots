@@ -31,7 +31,6 @@ const responseTracker = new Collection();
 client.once('ready', async () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
 
-  // Startup: Unpin alte Nachrichten und sende neue Nachalarmierung-Pinnachricht
   try {
     const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
     const pinned = await channel.messages.fetchPinned();
@@ -46,16 +45,18 @@ client.once('ready', async () => {
         new StringSelectMenuOptionBuilder().setLabel('Stiller Alarm').setValue('Stiller Alarm'),
         new StringSelectMenuOptionBuilder().setLabel('Sirenenalarm').setValue('Sirenenalarm')
       );
+
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
     const startupMessage = await channel.send({
-      content: `<@&${NACHALARM_ROLE_ID}> Nachalarmierung starten!`,
+      content: `Nachalarmierung starten:`,
       components: [row]
     });
+
     await startupMessage.pin();
-    console.log('📌 Startup-Nachalarmierungspinnachricht gesendet und gepinnt.');
+    console.log('📌 Startup-Nachalarmierungsnachricht gesendet und gepinnt.');
   } catch (err) {
-    console.error('❌ Fehler bei Startup-Pinnachricht:', err.message);
+    console.error('❌ Fehler bei Startup-Nachricht:', err.message);
   }
 });
 
@@ -112,7 +113,11 @@ client.on('messageCreate', async (message) => {
 
   try {
     const targetChannel = await client.channels.fetch(TARGET_CHANNEL_ID);
-    const sentMessage = await targetChannel.send({ embeds: [embed], components: [buttons] });
+    const sentMessage = await targetChannel.send({
+      embeds: [embed],
+      components: [buttons],
+      allowedMentions: { parse: [] } // 🔇 Kein Ping hier!
+    });
 
     responseTracker.set(sentMessage.id, {
       message: sentMessage,
@@ -121,14 +126,13 @@ client.on('messageCreate', async (message) => {
       late: []
     });
 
-    console.log('📢 Alarmierung mit Buttons gesendet.');
+    console.log('📢 Alarmierung ohne Ping gesendet.');
   } catch (err) {
     console.error('❌ Fehler beim Senden:', err.message);
   }
 });
 
 client.on('interactionCreate', async (interaction) => {
-  // Button-Antworten
   if (interaction.isButton()) {
     const entry = responseTracker.get(interaction.message.id);
     if (!entry) return;
@@ -157,9 +161,9 @@ client.on('interactionCreate', async (interaction) => {
     return interaction.reply({ content: 'Antwort gespeichert 🙌', ephemeral: true });
   }
 
-  // Auswahl im Startup-SelectMenu
   if (interaction.isStringSelectMenu() && interaction.customId === 'select_startup_alarmtype') {
     const selectedAlarmtype = interaction.values[0];
+
     const modal = new ModalBuilder()
       .setCustomId('startup_nachalarmieren_modal')
       .setTitle('Nachalarmieren');
@@ -174,15 +178,14 @@ client.on('interactionCreate', async (interaction) => {
       new ActionRowBuilder().addComponents(infoInput)
     );
 
-    // Speichere Alarmtyp temporär
-    interaction.values.selectedAlarmtype = selectedAlarmtype;
+    // Merke Alarmtyp in der Session (als Workaround)
+    interaction.client.alarmType = selectedAlarmtype;
 
     return interaction.showModal(modal);
   }
 
-  // Modal-Submit für Nachalarmierung
   if (interaction.isModalSubmit() && interaction.customId === 'startup_nachalarmieren_modal') {
-    const alarmtype = interaction.values.selectedAlarmtype;
+    const alarmtype = interaction.client.alarmType || 'Unbekannt';
     const stichwort = interaction.fields.getTextInputValue('stichwort');
     const adresse = interaction.fields.getTextInputValue('adresse');
     const info = interaction.fields.getTextInputValue('info');
@@ -205,7 +208,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
     const sentMessage = await channel.send({
-      content: `<@&${NACHALARM_ROLE_ID}>`,
+      content: `<@&${NACHALARM_ROLE_ID}>`, // 📣 Nur hier wird gepingt!
       embeds: [embed],
       components: [buttons],
       allowedMentions: { parse: ['roles'] }
