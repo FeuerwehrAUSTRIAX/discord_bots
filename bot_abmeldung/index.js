@@ -9,6 +9,7 @@ const {
   Events,
   ButtonBuilder,
   ButtonStyle,
+  EmbedBuilder
 } = require('discord.js');
 
 const { insertAbmeldung, removeExpiredAbmeldungen } = require('./db');
@@ -28,6 +29,14 @@ function convertToISO(dateStr) {
   if (!match) throw new Error('Ungültiges Datumsformat. Bitte TT.MM.JJJJ verwenden.');
   const [day, month, year] = dateStr.split('.');
   return `${year}-${month}-${day}`;
+}
+
+function formatDate(date) {
+  return new Date(date).toLocaleDateString('de-AT', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric'
+  });
 }
 
 client.once('ready', async () => {
@@ -113,9 +122,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         uhrzeit: interaction.fields.getTextInputValue('uhrzeit') || null
       };
 
-      const message = await interaction.channel.send({
-        content: `📌 **Abmeldung**\n**${data.dienstgrad} ${data.name}**\n🕒 **Von:** ${data.von}  **Bis:** ${data.bis}${data.uhrzeit ? ` – ${data.uhrzeit}` : ''}`
-      });
+      const embed = new EmbedBuilder()
+        .setColor(0xff9900)
+        .setAuthor({ name: '📌 Abmeldung eingetragen' })
+        .setDescription(`**👤 ${data.dienstgrad} ${data.name.toUpperCase()}**`)
+        .addFields(
+          { name: '📅 Zeitraum', value: `**Von:** ${formatDate(data.von)}\n**Bis:** ${formatDate(data.bis)}${data.uhrzeit ? ` – ${data.uhrzeit}` : ''}` }
+        )
+        .setFooter({ text: 'Automatische Löschung erfolgt bei Ablauf ⏳' });
+
+      const message = await interaction.channel.send({ embeds: [embed] });
 
       await message.pin();
       await insertAbmeldung({ ...data, message_id: message.id });
