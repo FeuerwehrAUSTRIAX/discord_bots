@@ -1,31 +1,48 @@
-import pkg from 'pg';
-const { Pool } = pkg;
-import dotenv from 'dotenv';
-dotenv.config();
+const { Pool } = require('pg');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false // wichtig für Railway!
+  }
 });
 
-export async function insertAbmeldung(data, messageId) {
+async function insertAbmeldung(data) {
   const query = `
-    INSERT INTO abmeldungen (dienstgrad, vorname, nachname, von, bis, uhrzeit, message_id)
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    INSERT INTO abmeldungen (dienstgrad, name, von, bis, uhrzeit, message_id)
+    VALUES ($1, $2, $3, $4, $5, $6)
   `;
-  const values = [data.dienstgrad, data.vorname, data.nachname, data.von, data.bis, data.uhrzeit, messageId];
+  const values = [
+    data.dienstgrad,
+    data.name,
+    data.von,
+    data.bis,
+    data.uhrzeit,
+    data.message_id
+  ];
+
   await pool.query(query, values);
 }
 
-export async function getAbgelaufeneAbmeldungen() {
-  const res = await pool.query(`SELECT * FROM abmeldungen WHERE bis < CURRENT_DATE`);
-  return res.rows;
+async function removeExpiredAbmeldungen() {
+  const result = await pool.query(
+    `SELECT id, message_id FROM abmeldungen WHERE bis < CURRENT_DATE`
+  );
+
+  for (const row of result.rows) {
+    try {
+      const channel = await client.channels.fetch(process.env.CHANNEL_ID);
+      const message = await channel.messages.fetch(row.message_id);
+      await message.delete();
+    } catch (err) {
+      console.warn(`⚠️ Nachricht ${row.message_id} konnte nicht gelöscht werden.`);
+    }
+
+    await pool.query(`DELETE FROM abmeldungen WHERE id = $1`, [row.id]);
+  }
 }
 
-export async function deleteAbmeldung(id) {
-  await pool.query(`DELETE FROM abmeldungen WHERE id = $1`, [id]);
-}
-
-export async function getClient() {
-  return pool;
-}
+module.exports = {
+  insertAbmeldung,
+  removeExpiredAbmeldungen
+};
