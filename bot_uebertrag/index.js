@@ -10,50 +10,63 @@ const client = new Client({
   ]
 });
 
-const SOURCE_CHANNEL_ID = '1294270461256929290';
-const WEBHOOK_URL = process.env.WEBHOOK_URL;
+// Channel IDs
+const CHANNELS = {
+  STATUSMELDUNGEN: '1294270461256929290',
+  ALARME: '1294270540525080626',
+  NOTRUFE: '1294270624255971439'
+};
+
+// Webhooks (Statusmeldungen bleibt wie bisher)
+const WEBHOOKS = {
+  [CHANNELS.STATUSMELDUNGEN]: process.env.WEBHOOK_URL,
+  [CHANNELS.ALARME]: process.env.WEBHOOK_ALARME,
+  [CHANNELS.NOTRUFE]: process.env.WEBHOOK_NOTRUFE
+};
 
 client.once(Events.ClientReady, () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
 });
 
 client.on(Events.MessageCreate, async (message) => {
-  // Nur bestimmte Channel verarbeiten
-  if (message.channel.id !== SOURCE_CHANNEL_ID) return;
+  const channelId = message.channel.id;
 
-  // Ignoriere nur echte Bots – aber NICHT Webhook-Nachrichten
+  // Nur konfigurierte Channels
+  if (!Object.keys(WEBHOOKS).includes(channelId)) return;
+
+  // Ignoriere echte Bots, aber nicht Webhooks
   if (message.author.bot && !message.webhookId) return;
 
-  // Logge die eingehende Nachricht
-  console.log('📥 Neue Nachricht empfangen:', {
+  // Logging
+  console.log(`📥 Neue Nachricht aus Channel ${channelId}:`, {
     author: message.author.username,
     content: message.content,
     embeds: message.embeds.length
   });
 
-  // Bereite den Payload für die Webhook-Weiterleitung vor
   const payload = {
     username: 'EmergencyDispatch',
     content: message.content || null,
     embeds: message.embeds.length > 0 ? message.embeds.map(e => e.toJSON()) : null
   };
 
-  // Sende an Webhook
-  try {
-    if (!WEBHOOK_URL) {
-      console.warn('⚠️ WEBHOOK_URL ist nicht gesetzt – Nachricht nicht weitergeleitet.');
-      return;
-    }
+  const webhookUrl = WEBHOOKS[channelId];
 
-    await fetch(WEBHOOK_URL, {
+  if (!webhookUrl) {
+    console.warn(`⚠️ Kein Webhook für Channel ${channelId} konfiguriert.`);
+    return;
+  }
+
+  try {
+    await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
 
-    console.log('📨 Nachricht erfolgreich weitergeleitet.');
+    console.log(`📨 Nachricht an Webhook für Channel ${channelId} gesendet.`);
   } catch (error) {
-    console.error('❌ Fehler beim Weiterleiten:', error);
+    console.error(`❌ Fehler beim Weiterleiten von Channel ${channelId}:`, error);
   }
 });
 
