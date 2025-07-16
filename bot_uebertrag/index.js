@@ -1,6 +1,6 @@
+require('dotenv').config();
 const { Client, GatewayIntentBits, Events } = require('discord.js');
 const fetch = require('node-fetch');
-require('dotenv').config();
 
 const client = new Client({
   intents: [
@@ -10,10 +10,7 @@ const client = new Client({
   ]
 });
 
-// Channel-ID, aus dem die Nachrichten abgefangen werden sollen
 const SOURCE_CHANNEL_ID = '1294270461256929290';
-
-// Webhook-Ziel aus Umgebungsvariable
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 client.once(Events.ClientReady, () => {
@@ -27,12 +24,12 @@ client.on(Events.MessageCreate, async (message) => {
   const payload = {
     username: 'EmergencyDispatch',
     content: message.content || null,
-    embeds: message.embeds.length > 0 ? message.embeds.map(e => e.toJSON()) : null,
+    embeds: message.embeds.length > 0 ? message.embeds.map(e => e.toJSON()) : null
   };
 
   try {
     if (!WEBHOOK_URL) {
-      console.warn('⚠️ Keine WEBHOOK_URL gesetzt – Nachricht nicht weitergeleitet.');
+      console.warn('⚠️ WEBHOOK_URL ist nicht gesetzt – Nachricht nicht weitergeleitet.');
       return;
     }
 
@@ -42,7 +39,7 @@ client.on(Events.MessageCreate, async (message) => {
       body: JSON.stringify(payload)
     });
 
-    console.log('📨 Nachricht weitergeleitet');
+    console.log('📨 Nachricht erfolgreich weitergeleitet.');
   } catch (error) {
     console.error('❌ Fehler beim Weiterleiten:', error);
   }
