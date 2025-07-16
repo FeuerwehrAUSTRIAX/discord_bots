@@ -13,8 +13,8 @@ const client = new Client({
 // Channel-ID, aus dem die Nachrichten abgefangen werden sollen
 const SOURCE_CHANNEL_ID = '1294270461256929290';
 
-// Webhook-Ziel
-const WEBHOOK_URL = 'https://discord.com/api/webhooks/1065019837119746159/3pJD_fMnhlVpAqwM1YGMzVOg3yVazpcGH_N7pF4rvNyPWrG6tbChNhOvWfgVAfGjJyR6';
+// Webhook-Ziel aus Umgebungsvariable
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
 client.once(Events.ClientReady, () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
@@ -31,11 +31,17 @@ client.on(Events.MessageCreate, async (message) => {
   };
 
   try {
+    if (!WEBHOOK_URL) {
+      console.warn('⚠️ Keine WEBHOOK_URL gesetzt – Nachricht nicht weitergeleitet.');
+      return;
+    }
+
     await fetch(WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+
     console.log('📨 Nachricht weitergeleitet');
   } catch (error) {
     console.error('❌ Fehler beim Weiterleiten:', error);
