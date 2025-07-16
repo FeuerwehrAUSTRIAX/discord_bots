@@ -18,15 +18,27 @@ client.once(Events.ClientReady, () => {
 });
 
 client.on(Events.MessageCreate, async (message) => {
+  // Nur bestimmte Channel verarbeiten
   if (message.channel.id !== SOURCE_CHANNEL_ID) return;
-  if (message.author.bot) return;
 
+  // Ignoriere nur echte Bots – aber NICHT Webhook-Nachrichten
+  if (message.author.bot && !message.webhookId) return;
+
+  // Logge die eingehende Nachricht
+  console.log('📥 Neue Nachricht empfangen:', {
+    author: message.author.username,
+    content: message.content,
+    embeds: message.embeds.length
+  });
+
+  // Bereite den Payload für die Webhook-Weiterleitung vor
   const payload = {
     username: 'EmergencyDispatch',
     content: message.content || null,
     embeds: message.embeds.length > 0 ? message.embeds.map(e => e.toJSON()) : null
   };
 
+  // Sende an Webhook
   try {
     if (!WEBHOOK_URL) {
       console.warn('⚠️ WEBHOOK_URL ist nicht gesetzt – Nachricht nicht weitergeleitet.');
