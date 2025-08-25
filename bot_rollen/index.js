@@ -3,57 +3,73 @@ import fetch from 'node-fetch';
 import { parse } from 'csv-parse/sync';
 import { Client, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
 
-/**
- * === KONFIG ===
- * Mapping: Spaltenname (genau wie im Sheet) => Discord Rollen-ID
- * Beispiel: Vor dem '=' steht in deiner Liste der Spalten-/ROW-Name,
- * nach dem '=' die Rollen-ID. Trage sie hier ein:
- */
-const ROLE_MAP = {
-  // "ROW-Name aus dem Sheet": "123456789012345000",
-  // z.B.:
-  // "Atemschutz": "123...",
-  // "Sanität": "124...",
-  // "Maschinist": "125..."
-};
+/* =========================
+   ENV erwartet in Railway:
+   - DISCORD_TOKEN
+   - GUILD_ID
+   - CSV_URL
+   - (optional) SYNC_INTERVAL_MIN
+   - ROLE_MAP_LINES  <= mehrzeilig: `ROW-Name = RoleID`
+   ========================= */
 
-/**
- * Pflichtfelder (genau wie Sheet-Header):
- */
+const CSV_URL   = process.env.CSV_URL;
+const GUILD_ID  = process.env.GUILD_ID;
+const TOKEN     = process.env.DISCORD_TOKEN;
+
+// Pflichtspalten (genau wie im Sheet!)
 const COL_USER_ID = 'Discord_UserID';
 const COL_GRADE   = 'Aktueller Dienstgrad';
 const COL_FIRST   = 'Namen';
 const COL_LAST    = 'Nachnamen';
 
-/**
- * Nickname-Format:
- */
+// Nickname-Format
 const nicknameOf = (rec) =>
   `${(rec[COL_GRADE] || '').toString().trim()} | ${(rec[COL_FIRST] || '').toString().trim()} ${(rec[COL_LAST] || '').toString().trim()}`
     .replace(/\s+/g, ' ')
     .trim();
 
-/**
- * Zelle gilt als "JA"?
- */
+// "JA" erkennen (groß/klein egal)
 const isYes = (val) => String(val || '').trim().toUpperCase() === 'JA';
 
-/**
- * CSV laden & zu Objekten mappen
- */
+// ROLE_MAP aus ENV-Variable ROLE_MAP_LINES bauen
+function parseRoleMapFromEnv() {
+  const src = process.env.ROLE_MAP_LINES || '';
+  const lines = src.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+  const map = {};
+  for (const line of lines) {
+    // akzeptiert:  ROW = 123...  (RoleID numerisch)
+    const m = line.match(/^(.+?)\s*=\s*(\d{5,})$/);
+    if (!m) continue;
+    const col = m[1].trim();
+    const id  = m[2].trim();
+    map[col] = id;
+  }
+  return map;
+}
+const ROLE_MAP = parseRoleMapFromEnv();
+
+function assertEnv() {
+  const missing = [];
+  if (!TOKEN) missing.push('DISCORD_TOKEN');
+  if (!GUILD_ID) missing.push('GUILD_ID');
+  if (!CSV_URL) missing.push('CSV_URL');
+  if (!Object.keys(ROLE_MAP).length) missing.push('ROLE_MAP_LINES (mind. 1 Zeile)');
+  if (missing.length) {
+    throw new Error('Fehlende ENV Variablen: ' + missing.join(', '));
+  }
+}
+assertEnv();
+
+// CSV laden & zu Objekten mappen, nur valide Discord IDs
 async function loadCsv() {
-  const res = await fetch(process.env.CSV_URL);
+  const res = await fetch(CSV_URL);
   if (!res.ok) throw new Error(`CSV Download failed: ${res.status} ${res.statusText}`);
   const text = await res.text();
-
   const rows = parse(text, { columns: true, skip_empty_lines: true, bom: true });
-  // Nur Zeilen mit valider Discord ID (17-20 Ziffern)
   return rows.filter(r => /^\d{17,20}$/.test(String(r[COL_USER_ID] || '').trim()));
 }
 
-/**
- * Zielrollen aus ROLE_MAP anhand "JA" im Sheet bestimmen
- */
+// Zielrollen aus ROLE_MAP nach "JA" bestimmen
 function desiredRoleIdsFor(rec) {
   const ids = [];
   for (const [colName, roleId] of Object.entries(ROLE_MAP)) {
@@ -62,9 +78,7 @@ function desiredRoleIdsFor(rec) {
   return ids;
 }
 
-/**
- * Sync für EIN Mitglied
- */
+// Einen Member syncen (Rollen & Nickname)
 async function syncMember(guild, rec) {
   const userId = String(rec[COL_USER_ID]).trim();
   const member = await guild.members.fetch(userId).catch(() => null);
@@ -72,7 +86,7 @@ async function syncMember(guild, rec) {
 
   const want = new Set(desiredRoleIdsFor(rec));
   const current = new Set(member.roles.cache.map(r => r.id));
-  const managedSet = new Set(Object.values(ROLE_MAP)); // nur Rollen aus unserer Map anfassen
+  const managedSet = new Set(Object.values(ROLE_MAP)); // nur unsere gemappten Rollen anfassen
 
   const toAdd = [...want].filter(id => !current.has(id));
   const toRemove = [...current].filter(id => managedSet.has(id) && !want.has(id));
@@ -99,39 +113,30 @@ async function syncMember(guild, rec) {
   };
 }
 
-/**
- * Alle synchronisieren
- */
+// Alle syncen (Autosync & /sync_all)
 async function syncAll(client) {
-  const guild = await client.guilds.fetch(process.env.GUILD_ID);
-  await guild.members.fetch(); // Cache füllen (wichtiger für größere Server)
-
+  const guild = await client.guilds.fetch(GUILD_ID);
+  await guild.members.fetch(); // Cache laden
   const data = await loadCsv();
   let ok = 0, fail = 0;
 
   for (const rec of data) {
     const res = await syncMember(guild, rec).catch(e => ({ ok: false, reason: e.message }));
     res.ok ? ok++ : fail++;
-    // sanftes Rate-Limit
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 500)); // gentle rate limit
   }
   console.log(`Sync done: ok=${ok} fail=${fail}`);
   return { ok, fail };
 }
 
-/**
- * Discord Client
- */
+// Discord Client + Slash Commands
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   partials: [Partials.GuildMember]
 });
 
-/**
- * Slash Commands: /sync_all und /sync_member
- */
 async function registerCommands() {
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  const rest = new REST({ version: '10' }).setToken(TOKEN);
   const commands = [
     { name: 'sync_all', description: 'Alle Mitglieder aus dem Sheet synchronisieren' },
     {
@@ -141,7 +146,7 @@ async function registerCommands() {
     }
   ];
   const app = await client.application.fetch();
-  await rest.put(Routes.applicationGuildCommands(app.id, process.env.GUILD_ID), { body: commands });
+  await rest.put(Routes.applicationGuildCommands(app.id, GUILD_ID), { body: commands });
   console.log('Slash-Commands registriert');
 }
 
@@ -149,10 +154,10 @@ client.once('ready', async () => {
   console.log(`✅ Eingeloggt als ${client.user.tag}`);
   await registerCommands();
 
-  // erster Auto-Sync
+  // Initialer Auto-Sync
   try { await syncAll(client); } catch (e) { console.error('Autosync Fehler:', e); }
 
-  // periodischer Auto-Sync (optional)
+  // Periodischer Auto-Sync (optional)
   const min = Number(process.env.SYNC_INTERVAL_MIN || 0);
   if (min > 0) {
     setInterval(() => {
@@ -174,11 +179,11 @@ client.on('interactionCreate', async (i) => {
   if (i.commandName === 'sync_member') {
     const userId = i.options.getString('user_id', true);
     await i.deferReply({ ephemeral: true });
-    const guild = await client.guilds.fetch(process.env.GUILD_ID);
+    const guild = await client.guilds.fetch(GUILD_ID);
     await guild.members.fetch(userId).catch(() => null); // warmup
     const data = await loadCsv();
     const rec = data.find(r => String(r[COL_USER_ID]).trim() === userId);
-    if (!rec) return i.editReply(`Kein Datensatz für **${userId}** gefunden (nur Zeilen mit Discord_UserID werden verarbeitet).`);
+    if (!rec) return i.editReply(`Kein Datensatz für **${userId}** gefunden (nur Zeilen mit ${COL_USER_ID}).`);
     const res = await syncMember(guild, rec);
     return i.editReply(res.ok
       ? `OK. Nick: **${res.details.nickname}** | added: ${res.details.added.length} | removed: ${res.details.removed.length}`
@@ -186,4 +191,4 @@ client.on('interactionCreate', async (i) => {
   }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(TOKEN);
