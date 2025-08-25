@@ -4,63 +4,79 @@ import { parse } from 'csv-parse/sync';
 import { Client, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
 
 /* =========================
-   ENV erwartet in Railway:
+   ENV (Railway → Variables)
    - DISCORD_TOKEN
    - GUILD_ID
-   - CSV_URL
-   - (optional) SYNC_INTERVAL_MIN
-   - ROLE_MAP_LINES  <= mehrzeilig: `ROW-Name = RoleID`
+   - CSV_URL   (Google Sheets CSV Publish-Link)
+   - SYNC_INTERVAL_MIN (optional, Minuten)
    ========================= */
 
 const CSV_URL   = process.env.CSV_URL;
 const GUILD_ID  = process.env.GUILD_ID;
 const TOKEN     = process.env.DISCORD_TOKEN;
 
-// Pflichtspalten (genau wie im Sheet!)
+/* ===== Pflichtspalten (genau wie im Sheet) ===== */
 const COL_USER_ID = 'Discord_UserID';
 const COL_GRADE   = 'Aktueller Dienstgrad';
 const COL_FIRST   = 'Namen';
 const COL_LAST    = 'Nachnamen';
 
-// Nickname-Format
+/* ===== Nickname-Format ===== */
 const nicknameOf = (rec) =>
   `${(rec[COL_GRADE] || '').toString().trim()} | ${(rec[COL_FIRST] || '').toString().trim()} ${(rec[COL_LAST] || '').toString().trim()}`
     .replace(/\s+/g, ' ')
     .trim();
 
-// "JA" erkennen (groß/klein egal)
+/* ===== „JA“-Prüfung ===== */
 const isYes = (val) => String(val || '').trim().toUpperCase() === 'JA';
 
-// ROLE_MAP aus ENV-Variable ROLE_MAP_LINES bauen
-function parseRoleMapFromEnv() {
-  const src = process.env.ROLE_MAP_LINES || '';
-  const lines = src.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-  const map = {};
-  for (const line of lines) {
-    // akzeptiert:  ROW = 123...  (RoleID numerisch)
-    const m = line.match(/^(.+?)\s*=\s*(\d{5,})$/);
-    if (!m) continue;
-    const col = m[1].trim();
-    const id  = m[2].trim();
-    map[col] = id;
-  }
-  return map;
-}
-const ROLE_MAP = parseRoleMapFromEnv();
+/* ===== ROLE MAP – direkt im Code (deine Liste) ===== */
+const ROLE_MAP = {
+  "FWBW - Absolviert": "1378763949591232645",
+  "TE10 - Absolviert": "1378764207247331381",
+  "TE20 - Absolviert": "1378764208786636910",
+  "TE30 - Absolviert": "1378764209625628742",
+  "TE40 - Absolviert": "1378764210292523050",
+  "BD10 - Absolviert": "1378764211038978149",
+  "BD20 - Absolviert": "1378764211705876561",
+  "BD70 - Absolviert": "1378764212360318976",
+  "BD80 - Absolviert": "1378764679005999155",
+  "AT - Absolviert":  "1378764686819987536",
+  "EMA B - Absolviert": "1378763935464820787",
+  "EMA C - Absolviert": "1378763943329267862",
+  "EMA C2 - Absolviert": "1378763946596630650",
+  "GFÜ - Absolviert":  "1378764690574016512",
+  "FÜ10 - Absolviert": "1378764693404909719",
+  "ASM10 - Absolviert":"1378764847466156092",
+  "FÜ20 - Absolviert": "1378764850104111206",
+  "NRD10 - Absolviert":"1378764851941216256",
+  "NRD20 - Absolviert":"1378764853593903236",
+  "SD10 - Absolviert": "1378764855737192498",
+  "SD20 - Absolviert": "1378765084066709637",
+  "SD25 - Absolviert": "1378765085815603341",
+  "SD35 - Absolviert": "1378765087275487375",
+  "SD40 - Absolviert": "1378765256431636541",
+  "WD10 - Absolviert": "1378765258725920870",
+  "WD20 - Absolviert": "1378765259845931008",
+  "T1 - Absolviert":   "1378765260416225411",
+  "WFBB1 - Absolviert":"1378765415534170202",
+  "WFBB2 - Absolviert":"1378765424421900428",
+  "TBS20 - Absolviert":"1378765524485275761",
+  "TBS30 - Absolviert":"1378765525014024332"
+};
 
+/* ===== Checks ===== */
 function assertEnv() {
   const missing = [];
   if (!TOKEN) missing.push('DISCORD_TOKEN');
   if (!GUILD_ID) missing.push('GUILD_ID');
   if (!CSV_URL) missing.push('CSV_URL');
-  if (!Object.keys(ROLE_MAP).length) missing.push('ROLE_MAP_LINES (mind. 1 Zeile)');
-  if (missing.length) {
-    throw new Error('Fehlende ENV Variablen: ' + missing.join(', '));
-  }
+  if (!Object.keys(ROLE_MAP).length) missing.push('ROLE_MAP (im Code)');
+  if (missing.length) throw new Error('Fehlende ENV Variablen: ' + missing.join(', '));
 }
 assertEnv();
 
-// CSV laden & zu Objekten mappen, nur valide Discord IDs
+/* ===== CSV laden (nur Zeilen mit gültiger Discord_UserID) ===== */
 async function loadCsv() {
   const res = await fetch(CSV_URL);
   if (!res.ok) throw new Error(`CSV Download failed: ${res.status} ${res.statusText}`);
@@ -69,7 +85,7 @@ async function loadCsv() {
   return rows.filter(r => /^\d{17,20}$/.test(String(r[COL_USER_ID] || '').trim()));
 }
 
-// Zielrollen aus ROLE_MAP nach "JA" bestimmen
+/* ===== Zielrollen aus ROLE_MAP nach "JA" bestimmen ===== */
 function desiredRoleIdsFor(rec) {
   const ids = [];
   for (const [colName, roleId] of Object.entries(ROLE_MAP)) {
@@ -78,7 +94,7 @@ function desiredRoleIdsFor(rec) {
   return ids;
 }
 
-// Einen Member syncen (Rollen & Nickname)
+/* ===== Einen Member syncen (Rollen & Nickname) ===== */
 async function syncMember(guild, rec) {
   const userId = String(rec[COL_USER_ID]).trim();
   const member = await guild.members.fetch(userId).catch(() => null);
@@ -86,34 +102,24 @@ async function syncMember(guild, rec) {
 
   const want = new Set(desiredRoleIdsFor(rec));
   const current = new Set(member.roles.cache.map(r => r.id));
-  const managedSet = new Set(Object.values(ROLE_MAP)); // nur unsere gemappten Rollen anfassen
+  const managedSet = new Set(Object.values(ROLE_MAP)); // wir fassen nur Rollen aus unserer Map an
 
   const toAdd = [...want].filter(id => !current.has(id));
   const toRemove = [...current].filter(id => managedSet.has(id) && !want.has(id));
 
   const changes = [];
-
-  if (toAdd.length) {
-    await member.roles.add(toAdd).catch(e => changes.push(`add: ${e.message}`));
-  }
-  if (toRemove.length) {
-    await member.roles.remove(toRemove).catch(e => changes.push(`remove: ${e.message}`));
-  }
+  if (toAdd.length)   await member.roles.add(toAdd).catch(e => changes.push(`add: ${e.message}`));
+  if (toRemove.length)await member.roles.remove(toRemove).catch(e => changes.push(`remove: ${e.message}`));
 
   const nick = nicknameOf(rec);
   if (nick && member.manageable) {
     await member.setNickname(nick).catch(e => changes.push(`nick: ${e.message}`));
   }
 
-  return {
-    userId,
-    ok: changes.length === 0,
-    details: { added: toAdd, removed: toRemove, nickname: nick },
-    changes
-  };
+  return { userId, ok: changes.length === 0, details: { added: toAdd, removed: toRemove, nickname: nick }, changes };
 }
 
-// Alle syncen (Autosync & /sync_all)
+/* ===== Alle syncen (Autosync & /sync_all) ===== */
 async function syncAll(client) {
   const guild = await client.guilds.fetch(GUILD_ID);
   await guild.members.fetch(); // Cache laden
@@ -129,7 +135,7 @@ async function syncAll(client) {
   return { ok, fail };
 }
 
-// Discord Client + Slash Commands
+/* ===== Discord Client + Slash Commands ===== */
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
   partials: [Partials.GuildMember]
@@ -160,9 +166,7 @@ client.once('ready', async () => {
   // Periodischer Auto-Sync (optional)
   const min = Number(process.env.SYNC_INTERVAL_MIN || 0);
   if (min > 0) {
-    setInterval(() => {
-      syncAll(client).catch(e => console.error('Autosync Fehler:', e));
-    }, min * 60 * 1000);
+    setInterval(() => { syncAll(client).catch(e => console.error('Autosync Fehler:', e)); }, min * 60 * 1000);
     console.log(`Autosync alle ${min} Minuten aktiviert`);
   }
 });
