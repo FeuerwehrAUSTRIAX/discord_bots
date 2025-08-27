@@ -123,8 +123,7 @@ const RANK_ALIASES = {
   "LBDSTV": "Landesbranddirektorstellvertreter",
   "LFR": "Landesfeuerwehrrat",
   // Abschnitt/Bezirk (nur Beispiele – passe an, was ihr wirklich nutzt)
-  "ABI": "Abschnittsbrandinspektor",           // ⚠️ Rolle fehlt noch! bitte ID nachreichen
-  "ABI STV": "Abschnittsbrandinspektor AFK Stv.",
+  "ABI": "Abschnittsbrandinspektor AFK Stv.",
   "BR AFK": "Brandrat AFK",
   "BR BFK STV": "Brandrat BFK Stv.",
   // Dienstgrade
