@@ -25,19 +25,13 @@ const TOKEN       = process.env.DISCORD_TOKEN;
 const NICK_SUFFIX = (process.env.NICK_SUFFIX || '').toString();
 
 /* ===== Pflichtspalten (genau wie im Sheet) ===== */
-const COL_USER_ID    = 'Discord_UserID';
-const COL_GRADE      = 'Aktueller Dienstgrad';
-const COL_FIRST      = 'Namen';
-const COL_LAST       = 'Nachnamen';
-const COL_FUNCTION   = 'Funktion';          // Mannschaft / Kommando / Verwaltung / Charge
-const COL_ACTIVE     = 'Aktives Mitglied';  // JA / NEIN
-const COL_ASSIGNMENT = 'Dienstzuteilung';   // z.B. "Feuerwehr Wiener Neustadt"
+const COL_USER_ID = 'Discord_UserID';
+const COL_GRADE   = 'Aktueller Dienstgrad';
+const COL_FIRST   = 'Namen';
+const COL_LAST    = 'Nachnamen';
+const COL_ACTIVE  = 'Aktives Mitglied?'; // << wichtig: genau so mit Fragezeichen!
 
-/* ===== „JA“-Prüfung ===== */
-const isYes = (val) => String(val || '').trim().toUpperCase() === 'JA';
-
-/* ===== Nickname-Formate ===== */
-// Aktiv: "Dienstgrad | Vorname Nachname"
+/* ===== Nickname-Format ===== */
 const activeNicknameOf = (rec) => {
   const grade = (rec[COL_GRADE] || '').toString().trim();
   const first = (rec[COL_FIRST] || '').toString().trim();
@@ -45,12 +39,17 @@ const activeNicknameOf = (rec) => {
   const base  = `${grade} | ${first} ${last}`.replace(/\s+/g, ' ').trim();
   return (base + (NICK_SUFFIX ? ` ${NICK_SUFFIX}` : '')).trim();
 };
-// Inaktiv: "Vorname Nachname"
 const inactiveNicknameOf = (rec) => {
   const first = (rec[COL_FIRST] || '').toString().trim();
   const last  = (rec[COL_LAST]  || '').toString().trim();
   return `${first} ${last}`.replace(/\s+/g, ' ').trim();
 };
+
+/* ===== „JA“-Prüfung (für Kurs-Spalten) ===== */
+const isYes = (val) => String(val || '').trim().toUpperCase() === 'JA';
+
+/* ===== Aktiv? (genau Ja = aktiv) ===== */
+const isActive = (val) => String(val || '').trim().toUpperCase() === 'JA';
 
 /* ===== Kurs-/Lehrgangsrollen ===== */
 const ROLE_MAP = {
@@ -133,20 +132,6 @@ const RANK_ROLE_MAP = {
   "Probefeuerwehrmann": "1151970098408595456"
 };
 
-/* ===== Funktions-Rollen (deine IDs) ===== */
-const FUNCTION_ROLE_MAP = {
-  "Mannschaft": "1151993527111254168",
-  "Kommando":   "1151993518722654269",
-  "Verwaltung": "1151964828806692946",
-  "Charge":     "1151968107984859156"
-};
-
-/* ===== Dienstzuteilung → Rollen (deine IDs) ===== */
-const ASSIGNMENT_ROLE_MAP = {
-  "Feuerwehr Wiener Neustadt": "1293999568991555667"
-  // weitere Zuteilungen hier ergänzen …
-};
-
 /* ===== Abkürzungs-/Alias-Mapping -> Schlüssel von RANK_ROLE_MAP ===== */
 const RANK_ALIASES = {
   "LBD": "Landesbranddirektor",
@@ -215,7 +200,7 @@ function normalizeGrade(raw) {
   return aliasTarget || s;
 }
 
-/* ===== Einzelne Zielrollen ===== */
+/* ===== Dienstgrad-Rolle für Datensatz bestimmen ===== */
 function rankRoleIdFor(rec) {
   const raw = rec[COL_GRADE];
   const normalized = normalizeGrade(raw);
@@ -225,16 +210,8 @@ function rankRoleIdFor(rec) {
   }
   return roleId || null;
 }
-function functionRoleIdFor(rec) {
-  const func = String(rec[COL_FUNCTION] || '').trim();
-  return FUNCTION_ROLE_MAP[func] || null;
-}
-function assignmentRoleIdFor(rec) {
-  const assign = String(rec[COL_ASSIGNMENT] || '').trim();
-  return ASSIGNMENT_ROLE_MAP[assign] || null;
-}
 
-/* ===== Gesamte Zielrollen (Kurse + Dienstgrad + Funktion + Zuteilung) ===== */
+/* ===== Zielrollen aus Kurs-Map + Dienstgrad bestimmen ===== */
 function desiredRoleIdsFor(rec) {
   const ids = [];
   for (const [colName, roleId] of Object.entries(ROLE_MAP)) {
@@ -242,17 +219,10 @@ function desiredRoleIdsFor(rec) {
   }
   const rankId = rankRoleIdFor(rec);
   if (rankId) ids.push(rankId);
-
-  const funcId = functionRoleIdFor(rec);
-  if (funcId) ids.push(funcId);
-
-  const assignId = assignmentRoleIdFor(rec);
-  if (assignId) ids.push(assignId);
-
   return ids;
 }
 
-/* ===== Nickname setzen mit Diagnose ===== */
+/* ===== Diagnose-Helfer für Nicknames ===== */
 function capNick(s) {
   const MAX = 32;
   return s.length > MAX ? s.slice(0, MAX) : s;
@@ -266,28 +236,48 @@ function rolePath(member) {
 }
 async function setNickWithDiagnostics(guild, member, desiredNick, changes) {
   const me = guild.members.me;
-  if (!me) return changes.push('nick: guild.members.me nicht verfügbar');
+  if (!me) {
+    changes.push('nick: guild.members.me nicht verfügbar');
+    return;
+  }
 
-  if (!me.permissions.has(PermissionFlagsBits.ManageNicknames)) {
+  const botHasManage = me.permissions.has(PermissionFlagsBits.ManageNicknames);
+  const highestBot = me.roles.highest;
+  const highestMem = member.roles.highest;
+
+  if (!botHasManage) {
     changes.push('nick: Bot hat keine Permission "Nicknames verwalten"');
+    console.warn(`[NICK DIAG] Bot-Permissions fehlen: ManageNicknames=false`);
     return;
   }
   if (member.id === guild.ownerId) {
     changes.push('nick: Server-Owner kann nicht umbenannt werden');
+    console.warn(`[NICK DIAG] Ziel ist Server-Owner`);
     return;
   }
-  if (member.roles.highest.comparePositionTo(me.roles.highest) >= 0) {
+  if (highestMem.comparePositionTo(highestBot) >= 0) {
     changes.push(`nick: Rollen-Hierarchie blockiert (Member ≥ Bot)`);
     console.warn(`[NICK DIAG]
-Member highest : ${member.roles.highest.name} #${member.roles.highest.position}
-Bot highest    : ${me.roles.highest.name} #${me.roles.highest.position}
+Member highest : ${highestMem.name} #${highestMem.position}
+Bot highest    : ${highestBot.name} #${highestBot.position}
 Member roles   : ${rolePath(member)}
-Bot roles      : ${rolePath(me)}`.trim());
+Bot roles      : ${rolePath(me)}
+`.trim());
     return;
   }
 
   const nick32 = capNick(desiredNick);
-  await member.setNickname(nick32).catch(e => changes.push(`nick: ${e.message || String(e)}`));
+  if (nick32 !== desiredNick) {
+    changes.push(`nick: gekürzt auf 32 Zeichen`);
+    console.warn(`[NICK DIAG] Nick gekürzt:
+desired="${desiredNick}" (len=${desiredNick.length})
+used   ="${nick32}" (len=${nick32.length})`);
+  }
+
+  await member.setNickname(nick32).catch(e => {
+    changes.push(`nick: ${e.message || String(e)}`);
+    console.warn(`[NICK DIAG] setNickname Fehler:`, e);
+  });
 }
 
 /* ===== Einen Member syncen (Rollen & Nickname) ===== */
@@ -298,21 +288,25 @@ async function syncMember(guild, rec) {
 
   const changes = [];
 
-  // Alle Rollen, die wir verwalten
-  const managedSet = new Set([
-    ...Object.values(ROLE_MAP),
-    ...Object.values(RANK_ROLE_MAP),
-    ...Object.values(FUNCTION_ROLE_MAP),
-    ...Object.values(ASSIGNMENT_ROLE_MAP)
-  ]);
+  // Managed-Rollen (nur diese fassen wir an)
+  const managedCourseSet = new Set(Object.values(ROLE_MAP));
+  const managedRankSet   = new Set(Object.values(RANK_ROLE_MAP));
+  const managedSet       = new Set([...managedCourseSet, ...managedRankSet]);
 
-  // INAKTIV → alle gemanagten Rollen entfernen + Nick = Vorname Nachname
-  if (!isYes(rec[COL_ACTIVE])) {
+  // Aktiv-Check
+  const active = isActive(rec[COL_ACTIVE]);
+  // Optional: Log zur Sichtbarkeit, falls mal was klemmt
+  console.log(`[ACTIVE CHECK] ${userId} – "${String(rec[COL_ACTIVE] || '').replace(/\s/g,'␣')}" → ${active ? 'AKTIV' : 'INAKTIV'}`);
+
+  if (!active) {
+    // INAKTIV → alle gemanagten Rollen entfernen + Nick = Vorname Nachname
     const toRemove = [...member.roles.cache.keys()].filter(id => managedSet.has(id));
     if (toRemove.length) await member.roles.remove(toRemove).catch(e => changes.push(`remove: ${e.message}`));
     const nick = inactiveNicknameOf(rec);
     if (nick) await setNickWithDiagnostics(guild, member, nick, changes);
-    return { userId, ok: changes.length === 0, reason: 'inaktiv', changes };
+    const ok = changes.length === 0;
+    if (!ok) console.warn(`[SYNC ${userId}] Änderungen/Fehler:`, changes);
+    return { userId, ok, reason: 'inaktiv', changes };
   }
 
   // AKTIV → Rollen synchronisieren
@@ -416,7 +410,7 @@ client.on('interactionCreate', async (i) => {
     const res = await syncMember(guild, rec);
     return i.editReply(res.ok
       ? `OK. Nick: **${res.details.nickname}** | added: ${res.details.added.length} | removed: ${res.details.removed.length}`
-      : `Fehler/Info: ${res.reason || res.changes?.join(', ') || 'siehe Logs'}`);
+      : `Fehler: ${res.reason || res.changes?.join(', ') || 'siehe Logs'}`);
   }
 
   if (i.commandName === 'nick_test') {
