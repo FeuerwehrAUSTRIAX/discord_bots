@@ -9,11 +9,13 @@ import { Client, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
    - GUILD_ID
    - CSV_URL   (Google Sheets CSV Publish-Link)
    - SYNC_INTERVAL_MIN (optional, Minuten)
+   - NICK_SUFFIX (optional, z.B. " 🔥")
    ========================= */
 
 const CSV_URL   = process.env.CSV_URL;
 const GUILD_ID  = process.env.GUILD_ID;
 const TOKEN     = process.env.DISCORD_TOKEN;
+const NICK_SUFFIX = (process.env.NICK_SUFFIX || '').toString();
 
 /* ===== Pflichtspalten (genau wie im Sheet) ===== */
 const COL_USER_ID = 'Discord_UserID';
@@ -22,15 +24,18 @@ const COL_FIRST   = 'Namen';
 const COL_LAST    = 'Nachnamen';
 
 /* ===== Nickname-Format ===== */
-const nicknameOf = (rec) =>
-  `${(rec[COL_GRADE] || '').toString().trim()} | ${(rec[COL_FIRST] || '').toString().trim()} ${(rec[COL_LAST] || '').toString().trim()}`
-    .replace(/\s+/g, ' ')
-    .trim();
+const nicknameOf = (rec) => {
+  const grade = (rec[COL_GRADE] || '').toString().trim();
+  const first = (rec[COL_FIRST] || '').toString().trim();
+  const last  = (rec[COL_LAST]  || '').toString().trim();
+  const base  = `${grade} | ${first} ${last}`.replace(/\s+/g, ' ').trim();
+  return (base + (NICK_SUFFIX ? ` ${NICK_SUFFIX}` : '')).trim();
+};
 
 /* ===== „JA“-Prüfung ===== */
 const isYes = (val) => String(val || '').trim().toUpperCase() === 'JA';
 
-/* ===== ROLE MAP – direkt im Code (deine Liste) ===== */
+/* ===== ROLE MAP – Kurs-/Lehrgangsrollen (deine bestehende Liste) ===== */
 const ROLE_MAP = {
   "FWBW - Absolviert": "1378763949591232645",
   "TE10 - Absolviert": "1378764207247331381",
@@ -65,13 +70,60 @@ const ROLE_MAP = {
   "TBS30 - Absolviert":"1378765525014024332"
 };
 
+/* ===== DIENSTGRAD -> ROLE ID (genau wie im Sheet in "Aktueller Dienstgrad") ===== */
+const RANK_ROLE_MAP = {
+  "Feuerwehrpräsident": "1383059679034474617",
+  "Landesbranddirektor": "1383068555838230699",
+  "Landesbranddirektorstellvertreter": "1383068465413361684",
+  "Landesfeuerwehrkurat": "1383069852151058514",
+  "Landesfeuerwehrjurist": "1383069749440806922",
+  "Landesfeuerwehrarzt": "1383069646965706752",
+  "Landesfeuerwehrrat": "1383068317740175401",
+  "Oberbrandrat BFK": "1304852341593215086",
+  "Brandrat BFK Stv.": "1383067441562652723",
+  "Verwaltungsrat": "1383068730598232124",
+  "Verwaltungsinspektor": "1383068662256107550",
+  "Bezirkssachbearbeiter": "1383068970982182952",
+  "Bezirksfeuerwehrkurat": "1383069559853944964",
+  "Bezirksfeuerwehrjurist": "1383069458318233650",
+  "Bezirksfeuerwehrarzt": "1383069334670413935",
+  "Brandrat AFK": "1383067231801311292",
+  "Abschnittsbrandinspektor AFK Stv.": "1304852140501500014",
+  "Abschnittssachbearbeiter": "1383068907308453939",
+  "Hauptbrandinspektor": "1151966652724936806",
+  "Oberbrandinspektor": "1151966758975053874",
+  "Brandinspektor": "1151966949711032341",
+  "Hauptverwalter": "1294314452124045333",
+  "Oberverwalter": "1151966882539257968",
+  "Verwalter": "1294314603555192832",
+  "Feuerwehrtechniker": "1383069272049451028",
+  "Feuerwehrkurat": "1383069199156379799",
+  "Feuerwehrjurist": "1383069126620352612",
+  "Feuerwehrarzt": "1383069055753130104",
+  "Sachbearbeiter": "1383068809300152331",
+  "Hauptverwaltungsmeister": "1294315446866149487",
+  "Oberverwaltungsmeister": "1294315364104011861",
+  "Verwaltungsmeister": "1294314875782303754",
+  "Hauptbrandmeister": "1151967127264309289",
+  "Oberbrandmeister": "1151967548657635358",
+  "Brandmeister": "1151967887028932658",
+  "Hauptlöschmeister": "1151968204302860358",
+  "Oberlöschmeister": "1151968450726600815",
+  "Löschmeister": "1294228852423397377",
+  "Hauptfeuerwehrmann": "1151969003280015360",
+  "Oberfeuerwehrmann": "1151969315319459930",
+  "Feuerwehrmann": "1151969557058162759",
+  "Probefeuerwehrmann": "1151970098408595456"
+};
+
 /* ===== Checks ===== */
 function assertEnv() {
   const missing = [];
   if (!TOKEN) missing.push('DISCORD_TOKEN');
   if (!GUILD_ID) missing.push('GUILD_ID');
   if (!CSV_URL) missing.push('CSV_URL');
-  if (!Object.keys(ROLE_MAP).length) missing.push('ROLE_MAP (im Code)');
+  if (!Object.keys(ROLE_MAP).length) missing.push('ROLE_MAP (Kurse)');
+  if (!Object.keys(RANK_ROLE_MAP).length) missing.push('RANK_ROLE_MAP (Dienstgrade)');
   if (missing.length) throw new Error('Fehlende ENV Variablen: ' + missing.join(', '));
 }
 assertEnv();
@@ -85,12 +137,22 @@ async function loadCsv() {
   return rows.filter(r => /^\d{17,20}$/.test(String(r[COL_USER_ID] || '').trim()));
 }
 
-/* ===== Zielrollen aus ROLE_MAP nach "JA" bestimmen ===== */
+/* ===== Dienstgrad-Rolle für Datensatz bestimmen ===== */
+function rankRoleIdFor(rec) {
+  const grade = String(rec[COL_GRADE] || '').trim();
+  return RANK_ROLE_MAP[grade] || null;
+}
+
+/* ===== Zielrollen aus Kurs-Map + Dienstgrad bestimmen ===== */
 function desiredRoleIdsFor(rec) {
   const ids = [];
+  // Kurs-/Lehrgangsrollen (JA-Spalten)
   for (const [colName, roleId] of Object.entries(ROLE_MAP)) {
     if (isYes(rec[colName])) ids.push(roleId);
   }
+  // Dienstgrad-Rolle (max. eine)
+  const rankId = rankRoleIdFor(rec);
+  if (rankId) ids.push(rankId);
   return ids;
 }
 
@@ -102,15 +164,20 @@ async function syncMember(guild, rec) {
 
   const want = new Set(desiredRoleIdsFor(rec));
   const current = new Set(member.roles.cache.map(r => r.id));
-  const managedSet = new Set(Object.values(ROLE_MAP)); // wir fassen nur Rollen aus unserer Map an
+
+  // Nur Rollen aus unseren Maps anfassen
+  const managedCourseSet = new Set(Object.values(ROLE_MAP));
+  const managedRankSet   = new Set(Object.values(RANK_ROLE_MAP));
+  const managedSet       = new Set([...managedCourseSet, ...managedRankSet]);
 
   const toAdd = [...want].filter(id => !current.has(id));
   const toRemove = [...current].filter(id => managedSet.has(id) && !want.has(id));
 
   const changes = [];
-  if (toAdd.length)   await member.roles.add(toAdd).catch(e => changes.push(`add: ${e.message}`));
-  if (toRemove.length)await member.roles.remove(toRemove).catch(e => changes.push(`remove: ${e.message}`));
+  if (toAdd.length)    await member.roles.add(toAdd).catch(e => changes.push(`add: ${e.message}`));
+  if (toRemove.length) await member.roles.remove(toRemove).catch(e => changes.push(`remove: ${e.message}`));
 
+  // Nickname "Dienstgrad | Vorname Nachname" (+ optional Suffix)
   const nick = nicknameOf(rec);
   if (nick && member.manageable) {
     await member.setNickname(nick).catch(e => changes.push(`nick: ${e.message}`));
