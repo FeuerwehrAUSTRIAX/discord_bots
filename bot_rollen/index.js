@@ -35,7 +35,7 @@ const nicknameOf = (rec) => {
 /* ===== „JA“-Prüfung ===== */
 const isYes = (val) => String(val || '').trim().toUpperCase() === 'JA';
 
-/* ===== ROLE MAP – Kurs-/Lehrgangsrollen (deine bestehende Liste) ===== */
+/* ===== Kurs-/Lehrgangsrollen ===== */
 const ROLE_MAP = {
   "FWBW - Absolviert": "1378763949591232645",
   "TE10 - Absolviert": "1378764207247331381",
@@ -70,7 +70,7 @@ const ROLE_MAP = {
   "TBS30 - Absolviert":"1378765525014024332"
 };
 
-/* ===== DIENSTGRAD -> ROLE ID (genau wie im Sheet in "Aktueller Dienstgrad") ===== */
+/* ===== Dienstgrad-Rollen ===== */
 const RANK_ROLE_MAP = {
   "Feuerwehrpräsident": "1383059679034474617",
   "Landesbranddirektor": "1383068555838230699",
@@ -87,8 +87,8 @@ const RANK_ROLE_MAP = {
   "Bezirksfeuerwehrkurat": "1383069559853944964",
   "Bezirksfeuerwehrjurist": "1383069458318233650",
   "Bezirksfeuerwehrarzt": "1383069334670413935",
-  "BR": "1383067231801311292",
-  "ABI": "1304852140501500014",
+  "Brandrat AFK": "1383067231801311292",
+  "Abschnittsbrandinspektor AFK Stv.": "1304852140501500014",
   "Abschnittssachbearbeiter": "1383068907308453939",
   "Hauptbrandinspektor": "1151966652724936806",
   "Oberbrandinspektor": "1151966758975053874",
@@ -116,6 +116,46 @@ const RANK_ROLE_MAP = {
   "Probefeuerwehrmann": "1151970098408595456"
 };
 
+/* ===== Abkürzungs-/Alias-Mapping -> Schlüssel von RANK_ROLE_MAP ===== */
+const RANK_ALIASES = {
+  // Führung
+  "LBD": "Landesbranddirektor",
+  "LBDSTV": "Landesbranddirektorstellvertreter",
+  "LFR": "Landesfeuerwehrrat",
+  // Abschnitt/Bezirk (nur Beispiele – passe an, was ihr wirklich nutzt)
+  "ABI": "Abschnittsbrandinspektor",           // ⚠️ Rolle fehlt noch! bitte ID nachreichen
+  "ABI STV": "Abschnittsbrandinspektor AFK Stv.",
+  "BR AFK": "Brandrat AFK",
+  "BR BFK STV": "Brandrat BFK Stv.",
+  // Dienstgrade
+  "HBI": "Hauptbrandinspektor",
+  "OBI": "Oberbrandinspektor",
+  "BI":  "Brandinspektor",
+  "HBM": "Hauptbrandmeister",
+  "OBM": "Oberbrandmeister",
+  "BM":  "Brandmeister",
+  "HLM": "Hauptlöschmeister",
+  "OLM": "Oberlöschmeister",
+  "LM":  "Löschmeister",
+  "HFM": "Hauptfeuerwehrmann",
+  "OFM": "Oberfeuerwehrmann",
+  "FM":  "Feuerwehrmann",
+  "PFM": "Probefeuerwehrmann",
+  // Verwaltung
+  "HVM": "Hauptverwaltungsmeister",
+  "OVM": "Oberverwaltungsmeister",
+  "VM":  "Verwaltungsmeister",
+  "HV":  "Hauptverwalter",
+  "OV":  "Oberverwalter",
+  "V":   "Verwalter",
+  // Sonstige
+  "SAB": "Sachbearbeiter",
+  "FT":  "Feuerwehrtechniker",
+  "FK":  "Feuerwehrkurat",
+  "FJ":  "Feuerwehrjurist",
+  "FA":  "Feuerwehrarzt"
+};
+
 /* ===== Checks ===== */
 function assertEnv() {
   const missing = [];
@@ -137,10 +177,24 @@ async function loadCsv() {
   return rows.filter(r => /^\d{17,20}$/.test(String(r[COL_USER_ID] || '').trim()));
 }
 
+/* ===== Grade normalisieren (Abkürzungen/Varianten) ===== */
+function normalizeGrade(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const key = s.toUpperCase().replace(/\s+/g, ' ');
+  const aliasTarget = RANK_ALIASES[key];
+  return aliasTarget || s;
+}
+
 /* ===== Dienstgrad-Rolle für Datensatz bestimmen ===== */
 function rankRoleIdFor(rec) {
-  const grade = String(rec[COL_GRADE] || '').trim();
-  return RANK_ROLE_MAP[grade] || null;
+  const raw = rec[COL_GRADE];
+  const normalized = normalizeGrade(raw);
+  const roleId = RANK_ROLE_MAP[normalized];
+  if (!roleId && normalized) {
+    console.warn(`[RANK] Kein Mapping für "${raw}" → normalisiert "${normalized}". Bitte in RANK_ROLE_MAP/RANK_ALIASES ergänzen.`);
+  }
+  return roleId || null;
 }
 
 /* ===== Zielrollen aus Kurs-Map + Dienstgrad bestimmen ===== */
@@ -181,9 +235,13 @@ async function syncMember(guild, rec) {
   const nick = nicknameOf(rec);
   if (nick && member.manageable) {
     await member.setNickname(nick).catch(e => changes.push(`nick: ${e.message}`));
+  } else if (!member.manageable) {
+    changes.push('nick: Bot darf Nickname nicht ändern (Rollenhierarchie/Berechtigung?)');
   }
 
-  return { userId, ok: changes.length === 0, details: { added: toAdd, removed: toRemove, nickname: nick }, changes };
+  const ok = changes.length === 0;
+  if (!ok) console.warn(`[SYNC ${userId}] Änderungen/Fehler:`, changes);
+  return { userId, ok, details: { added: toAdd, removed: toRemove, nickname: nick }, changes };
 }
 
 /* ===== Alle syncen (Autosync & /sync_all) ===== */
@@ -195,7 +253,10 @@ async function syncAll(client) {
 
   for (const rec of data) {
     const res = await syncMember(guild, rec).catch(e => ({ ok: false, reason: e.message }));
-    res.ok ? ok++ : fail++;
+    if (res.ok) ok++; else {
+      fail++;
+      console.warn(`[SYNC FAIL] ${res.userId || ''} – ${res.reason || res.changes?.join(', ') || 'unbekannt'}`);
+    }
     await new Promise(r => setTimeout(r, 500)); // gentle rate limit
   }
   console.log(`Sync done: ok=${ok} fail=${fail}`);
@@ -223,7 +284,8 @@ async function registerCommands() {
   console.log('Slash-Commands registriert');
 }
 
-client.once('ready', async () => {
+/* v14 Hinweis: "ready" ist deprecated -> "clientReady" */
+client.on('clientReady', async () => {
   console.log(`✅ Eingeloggt als ${client.user.tag}`);
   await registerCommands();
 
