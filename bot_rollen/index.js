@@ -1,20 +1,27 @@
 import 'dotenv/config';
 import fetch from 'node-fetch';
 import { parse } from 'csv-parse/sync';
-import { Client, GatewayIntentBits, Partials, REST, Routes } from 'discord.js';
+import {
+  Client,
+  GatewayIntentBits,
+  Partials,
+  REST,
+  Routes,
+  PermissionFlagsBits
+} from 'discord.js';
 
 /* =========================
    ENV (Railway → Variables)
    - DISCORD_TOKEN
    - GUILD_ID
-   - CSV_URL   (Google Sheets CSV Publish-Link)
-   - SYNC_INTERVAL_MIN (optional, Minuten)
-   - NICK_SUFFIX (optional, z.B. " 🔥")
+   - CSV_URL             (Google Sheets CSV Publish-Link)
+   - SYNC_INTERVAL_MIN   (optional, Minuten)
+   - NICK_SUFFIX         (optional, z.B. " 🔥")
    ========================= */
 
-const CSV_URL   = process.env.CSV_URL;
-const GUILD_ID  = process.env.GUILD_ID;
-const TOKEN     = process.env.DISCORD_TOKEN;
+const CSV_URL     = process.env.CSV_URL;
+const GUILD_ID    = process.env.GUILD_ID;
+const TOKEN       = process.env.DISCORD_TOKEN;
 const NICK_SUFFIX = (process.env.NICK_SUFFIX || '').toString();
 
 /* ===== Pflichtspalten (genau wie im Sheet) ===== */
@@ -118,15 +125,14 @@ const RANK_ROLE_MAP = {
 
 /* ===== Abkürzungs-/Alias-Mapping -> Schlüssel von RANK_ROLE_MAP ===== */
 const RANK_ALIASES = {
-  // Führung
   "LBD": "Landesbranddirektor",
   "LBDSTV": "Landesbranddirektorstellvertreter",
   "LFR": "Landesfeuerwehrrat",
-  // Abschnitt/Bezirk (nur Beispiele – passe an, was ihr wirklich nutzt)
+
   "ABI": "Abschnittsbrandinspektor AFK Stv.",
   "BR AFK": "Brandrat AFK",
   "BR BFK STV": "Brandrat BFK Stv.",
-  // Dienstgrade
+
   "HBI": "Hauptbrandinspektor",
   "OBI": "Oberbrandinspektor",
   "BI":  "Brandinspektor",
@@ -140,14 +146,14 @@ const RANK_ALIASES = {
   "OFM": "Oberfeuerwehrmann",
   "FM":  "Feuerwehrmann",
   "PFM": "Probefeuerwehrmann",
-  // Verwaltung
+
   "HVM": "Hauptverwaltungsmeister",
   "OVM": "Oberverwaltungsmeister",
   "VM":  "Verwaltungsmeister",
   "HV":  "Hauptverwalter",
   "OV":  "Oberverwalter",
   "V":   "Verwalter",
-  // Sonstige
+
   "SAB": "Sachbearbeiter",
   "FT":  "Feuerwehrtechniker",
   "FK":  "Feuerwehrkurat",
@@ -199,14 +205,70 @@ function rankRoleIdFor(rec) {
 /* ===== Zielrollen aus Kurs-Map + Dienstgrad bestimmen ===== */
 function desiredRoleIdsFor(rec) {
   const ids = [];
-  // Kurs-/Lehrgangsrollen (JA-Spalten)
   for (const [colName, roleId] of Object.entries(ROLE_MAP)) {
     if (isYes(rec[colName])) ids.push(roleId);
   }
-  // Dienstgrad-Rolle (max. eine)
   const rankId = rankRoleIdFor(rec);
   if (rankId) ids.push(rankId);
   return ids;
+}
+
+/* ===== Diagnose-Helfer für Nicknames ===== */
+function capNick(s) {
+  const MAX = 32;
+  return s.length > MAX ? s.slice(0, MAX) : s;
+}
+function rolePath(member) {
+  const list = [...member.roles.cache.values()]
+    .sort((a,b) => b.position - a.position)
+    .slice(0, 5)
+    .map(r => `${r.name} #${r.position}`);
+  return list.join(' > ');
+}
+async function setNickWithDiagnostics(guild, member, desiredNick, changes) {
+  const me = guild.members.me;
+  if (!me) {
+    changes.push('nick: guild.members.me nicht verfügbar');
+    return;
+  }
+
+  const botHasManage = me.permissions.has(PermissionFlagsBits.ManageNicknames);
+  const highestBot = me.roles.highest;
+  const highestMem = member.roles.highest;
+
+  if (!botHasManage) {
+    changes.push('nick: Bot hat keine Permission "Nicknames verwalten"');
+    console.warn(`[NICK DIAG] Bot-Permissions fehlen: ManageNicknames=false`);
+    return;
+  }
+  if (member.id === guild.ownerId) {
+    changes.push('nick: Server-Owner kann nicht umbenannt werden');
+    console.warn(`[NICK DIAG] Ziel ist Server-Owner`);
+    return;
+  }
+  if (highestMem.comparePositionTo(highestBot) >= 0) {
+    changes.push(`nick: Rollen-Hierarchie blockiert (Member ≥ Bot)`);
+    console.warn(`[NICK DIAG]
+Member highest : ${highestMem.name} #${highestMem.position}
+Bot highest    : ${highestBot.name} #${highestBot.position}
+Member roles   : ${rolePath(member)}
+Bot roles      : ${rolePath(me)}
+`.trim());
+    return;
+  }
+
+  const nick32 = capNick(desiredNick);
+  if (nick32 !== desiredNick) {
+    changes.push(`nick: gekürzt auf 32 Zeichen`);
+    console.warn(`[NICK DIAG] Nick gekürzt:
+desired="${desiredNick}" (len=${desiredNick.length})
+used   ="${nick32}" (len=${nick32.length})`);
+  }
+
+  await member.setNickname(nick32).catch(e => {
+    changes.push(`nick: ${e.message || String(e)}`);
+    console.warn(`[NICK DIAG] setNickname Fehler:`, e);
+  });
 }
 
 /* ===== Einen Member syncen (Rollen & Nickname) ===== */
@@ -218,7 +280,6 @@ async function syncMember(guild, rec) {
   const want = new Set(desiredRoleIdsFor(rec));
   const current = new Set(member.roles.cache.map(r => r.id));
 
-  // Nur Rollen aus unseren Maps anfassen
   const managedCourseSet = new Set(Object.values(ROLE_MAP));
   const managedRankSet   = new Set(Object.values(RANK_ROLE_MAP));
   const managedSet       = new Set([...managedCourseSet, ...managedRankSet]);
@@ -230,13 +291,8 @@ async function syncMember(guild, rec) {
   if (toAdd.length)    await member.roles.add(toAdd).catch(e => changes.push(`add: ${e.message}`));
   if (toRemove.length) await member.roles.remove(toRemove).catch(e => changes.push(`remove: ${e.message}`));
 
-  // Nickname "Dienstgrad | Vorname Nachname" (+ optional Suffix)
   const nick = nicknameOf(rec);
-  if (nick && member.manageable) {
-    await member.setNickname(nick).catch(e => changes.push(`nick: ${e.message}`));
-  } else if (!member.manageable) {
-    changes.push('nick: Bot darf Nickname nicht ändern (Rollenhierarchie/Berechtigung?)');
-  }
+  if (nick) await setNickWithDiagnostics(guild, member, nick, changes);
 
   const ok = changes.length === 0;
   if (!ok) console.warn(`[SYNC ${userId}] Änderungen/Fehler:`, changes);
@@ -246,7 +302,7 @@ async function syncMember(guild, rec) {
 /* ===== Alle syncen (Autosync & /sync_all) ===== */
 async function syncAll(client) {
   const guild = await client.guilds.fetch(GUILD_ID);
-  await guild.members.fetch(); // Cache laden
+  await guild.members.fetch();
   const data = await loadCsv();
   let ok = 0, fail = 0;
 
@@ -256,7 +312,7 @@ async function syncAll(client) {
       fail++;
       console.warn(`[SYNC FAIL] ${res.userId || ''} – ${res.reason || res.changes?.join(', ') || 'unbekannt'}`);
     }
-    await new Promise(r => setTimeout(r, 500)); // gentle rate limit
+    await new Promise(r => setTimeout(r, 500));
   }
   console.log(`Sync done: ok=${ok} fail=${fail}`);
   return { ok, fail };
@@ -276,6 +332,14 @@ async function registerCommands() {
       name: 'sync_member',
       description: 'Ein Mitglied per Discord User ID synchronisieren',
       options: [{ name: 'user_id', description: 'Discord User ID', type: 3, required: true }]
+    },
+    {
+      name: 'nick_test',
+      description: 'Diagnose: Nickname für User setzen',
+      options: [
+        { name: 'user_id', description: 'Discord User ID', type: 3, required: true },
+        { name: 'nick', description: 'Wunsch-Nick', type: 3, required: true }
+      ]
     }
   ];
   const app = await client.application.fetch();
@@ -288,10 +352,8 @@ client.on('clientReady', async () => {
   console.log(`✅ Eingeloggt als ${client.user.tag}`);
   await registerCommands();
 
-  // Initialer Auto-Sync
   try { await syncAll(client); } catch (e) { console.error('Autosync Fehler:', e); }
 
-  // Periodischer Auto-Sync (optional)
   const min = Number(process.env.SYNC_INTERVAL_MIN || 0);
   if (min > 0) {
     setInterval(() => { syncAll(client).catch(e => console.error('Autosync Fehler:', e)); }, min * 60 * 1000);
@@ -312,7 +374,7 @@ client.on('interactionCreate', async (i) => {
     const userId = i.options.getString('user_id', true);
     await i.deferReply({ ephemeral: true });
     const guild = await client.guilds.fetch(GUILD_ID);
-    await guild.members.fetch(userId).catch(() => null); // warmup
+    await guild.members.fetch(userId).catch(() => null);
     const data = await loadCsv();
     const rec = data.find(r => String(r[COL_USER_ID]).trim() === userId);
     if (!rec) return i.editReply(`Kein Datensatz für **${userId}** gefunden (nur Zeilen mit ${COL_USER_ID}).`);
@@ -320,6 +382,18 @@ client.on('interactionCreate', async (i) => {
     return i.editReply(res.ok
       ? `OK. Nick: **${res.details.nickname}** | added: ${res.details.added.length} | removed: ${res.details.removed.length}`
       : `Fehler: ${res.reason || res.changes?.join(', ') || 'siehe Logs'}`);
+  }
+
+  if (i.commandName === 'nick_test') {
+    const userId = i.options.getString('user_id', true);
+    const nick   = i.options.getString('nick', true);
+    await i.deferReply({ ephemeral: true });
+    const guild = await client.guilds.fetch(GUILD_ID);
+    const member = await guild.members.fetch(userId).catch(() => null);
+    if (!member) return i.editReply('Member nicht gefunden.');
+    const changes = [];
+    await setNickWithDiagnostics(guild, member, nick, changes);
+    return i.editReply(changes.length ? `Ergebnis: ${changes.join(' | ')}` : `OK – Nick gesetzt: **${capNick(nick)}**`);
   }
 });
 
