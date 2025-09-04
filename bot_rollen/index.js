@@ -89,6 +89,7 @@ const ROLE_MAP = {
 };
 
 /* ===== Dienstgrad-Rollen ===== */
+/* Neu: Werte dürfen String ODER Objekt pro Funktion sein */
 const RANK_ROLE_MAP = {
   "Feuerwehrpräsident": "1383059679034474617",
   "Landesbranddirektor": "1383068555838230699",
@@ -127,7 +128,14 @@ const RANK_ROLE_MAP = {
   "Brandmeister": "1151967887028932658",
   "Hauptlöschmeister": "1151968204302860358",
   "Oberlöschmeister": "1151968450726600815",
-  "Löschmeister": "1294228852423397377",
+
+  // 🔧 Löschmeister: abhängig von Funktion
+  "Löschmeister": {
+    "Charge":     "1151968672328454226", // Löschmeister Charge
+    "Mannschaft": "1294228852423397377", // Löschmeister Mannschaft
+    "default":    "1294228852423397377"  // Fallback (falls Funktion leer/unerwartet)
+  },
+
   "Hauptfeuerwehrmann": "1151969003280015360",
   "Oberfeuerwehrmann": "1151969315319459930",
   "Feuerwehrmann": "1151969557058162759",
@@ -216,15 +224,34 @@ function normalizeGrade(raw) {
   return aliasTarget || s;
 }
 
+/* ===== Alle Rank-IDs einsammeln (für managedSet) ===== */
+function allRankRoleIds() {
+  const ids = [];
+  for (const v of Object.values(RANK_ROLE_MAP)) {
+    if (typeof v === 'string') ids.push(v);
+    else if (v && typeof v === 'object') ids.push(...Object.values(v).filter(Boolean));
+  }
+  return ids;
+}
+
 /* ===== Einzelne Zielrollen ===== */
 function rankRoleIdFor(rec) {
   const raw = rec[COL_GRADE];
   const normalized = normalizeGrade(raw);
-  const roleId = RANK_ROLE_MAP[normalized];
-  if (!roleId && normalized) {
+  const cfg = RANK_ROLE_MAP[normalized];
+  if (!cfg && normalized) {
     console.warn(`[RANK] Kein Mapping für "${raw}" → normalisiert "${normalized}". Bitte in RANK_ROLE_MAP/RANK_ALIASES ergänzen.`);
+    return null;
   }
-  return roleId || null;
+  if (typeof cfg === 'string') return cfg; // „normale“ Grade
+
+  // per-Funktion-Zuordnung (z.B. Löschmeister Mannschaft vs Charge)
+  const func = String(rec[COL_FUNCTION] || '').trim();
+  const roleId = cfg[func] || cfg['default'] || cfg['*'] || null;
+  if (!roleId) {
+    console.warn(`[RANK] Kein Funktions-Mapping für "${normalized}" bei Funktion "${func}".`);
+  }
+  return roleId;
 }
 function functionRoleIdFor(rec) {
   const func = String(rec[COL_FUNCTION] || '').trim();
@@ -305,7 +332,7 @@ async function syncMember(guild, rec) {
   // Alle verwalteten Rollen
   const managedSet = new Set([
     ...Object.values(ROLE_MAP),
-    ...Object.values(RANK_ROLE_MAP),
+    ...allRankRoleIds(), // wichtig: ALLE möglichen Rank-IDs (auch per Funktion)
     ...Object.values(FUNCTION_ROLE_MAP),
     ...Object.values(ASSIGNMENT_ROLE_MAP)
   ]);
@@ -392,8 +419,8 @@ async function registerCommands() {
   console.log('Slash-Commands registriert');
 }
 
-/* v14 Hinweis: "ready" ist deprecated -> "clientReady" */
-client.on('clientReady', async () => {
+/* discord.js v14: ready-Event */
+client.on('ready', async () => {
   console.log(`✅ Eingeloggt als ${client.user.tag}`);
   await registerCommands();
 
