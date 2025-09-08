@@ -13,8 +13,7 @@ const {
   StringSelectMenuBuilder,
   StringSelectMenuOptionBuilder
 } = require('discord.js');
-
-// Falls du Node < 18 nutzt, entkommentieren + "npm i undici"
+// Falls du Node < 18 nutzt, entkommentieren und "npm i undici":
 // const { fetch } = require('undici');
 
 const client = new Client({
@@ -25,16 +24,13 @@ const client = new Client({
   ]
 });
 
-// ====== DEINE IDs wie gehabt ======
+/* ===== Deine IDs ===== */
 const SOURCE_CHANNEL_ID = '1388070050061221990';
 const TARGET_CHANNEL_ID = '1294003170116239431';
 const NACHALARM_ROLE_ID = '1293999568991555667';
-
-// Optional: AAO in einen anderen Kanal schicken.
-// Wenn ENV nicht gesetzt → in TARGET_CHANNEL_ID posten.
 const AAO_CHANNEL_ID = process.env.AAO_CHANNEL_ID || TARGET_CHANNEL_ID;
 
-// ====== NEU: CSV-Quellen (von dir) ======
+/* ===== CSV-Quellen ===== */
 const CSV_URLS = {
   BRAND: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQTiTQbW09ek6xRFa7YFwFWbm-Sn6WuApvVtdyxv0-FO7xmbT1hMhGw7Qswg1BrSXdVhUdReX6BlpQj/pub?gid=0&single=true&output=csv',
   TECHNISCH: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQTiTQbW09ek6xRFa7YFwFWbm-Sn6WuApvVtdyxv0-FO7xmbT1hMhGw7Qswg1BrSXdVhUdReX6BlpQj/pub?gid=2128438331&single=true&output=csv',
@@ -42,7 +38,7 @@ const CSV_URLS = {
   OTHER: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQTiTQbW09ek6xRFa7YFwFWbm-Sn6WuApvVtdyxv0-FO7xmbT1hMhGw7Qswg1BrSXdVhUdReX6BlpQj/pub?gid=1850566762&single=true&output=csv'
 };
 
-// ====== NEU: Cache für AAO ======
+/* ===== AAO-Cache ===== */
 const aaoCache = {
   BRAND: new Map(),
   TECHNISCH: new Map(),
@@ -50,7 +46,9 @@ const aaoCache = {
   OTHER: new Map()
 };
 
-// ====== NEU: AAO-Helfer ======
+const responseTracker = new Collection();
+
+/* ===== AAO-Helfer ===== */
 const normalize = (s) =>
   (s || '')
     .toString()
@@ -91,7 +89,7 @@ async function loadCategory(catName, url) {
     const stufe = normalize(row['Alarmstufe']);
     if (!sw) continue;
     if (stufe) map.set(`${stufe}|${sw}`, row);
-    if (!map.has(sw)) map.set(sw, row); // Fallback
+    if (!map.has(sw)) map.set(sw, row); // Fallback ohne Stufe
   }
   aaoCache[catName] = map;
   return map.size;
@@ -120,16 +118,17 @@ function lookupAAO(alarmstufe, stichwort) {
   const map = aaoCache[cat] || new Map();
   const key1 = `${normalize(alarmstufe)}|${normalize(stichwort)}`;
   const key2 = normalize(stichwort);
-  return { cat, row: map.get(key1) || map.get(key2) || null };
+  return { row: map.get(key1) || map.get(key2) || null };
 }
 
-// „FF - B1 - GMA-Brand“ → { alarmstufe: 'B1', stichwort: 'GMA-Brand' }
 function extractAlarmInfo(text) {
   if (!text) return null;
 
+  // „FF - B1 - GMA-Brand“
   const m1 = text.match(/\bFF\s*-\s*([A-Za-z]\d{0,2})\s*-\s*([^\n\r]+)/i);
   if (m1) return { alarmstufe: m1[1].toUpperCase(), stichwort: m1[2].trim() };
 
+  // alternative Schreibweisen
   const m2 = text.match(/\b([A-Za-z]\d{0,2})\b.*?-+\s*([A-Za-zÄÖÜäöüß0-9 \-\/]+)/);
   if (m2) return { alarmstufe: m2[1].toUpperCase(), stichwort: m2[2].replace(/^FF\s*-\s*/i, '').trim() };
 
@@ -140,29 +139,35 @@ function extractAlarmInfo(text) {
   return null;
 }
 
+function parseAAOField(val) {
+  if (!val) return [];
+  const s = val.trim().replace(/^["']|["']$/g, ''); // äußere Anführungszeichen entfernen
+  return s.split(',').map(x => x.trim()).filter(Boolean);
+}
+
 async function maybePostAAOFromText(text) {
   const info = extractAlarmInfo(text);
   if (!info?.stichwort || !info?.alarmstufe) return;
 
-  const { cat, row } = lookupAAO(info.alarmstufe, info.stichwort);
+  const { row } = lookupAAO(info.alarmstufe, info.stichwort);
   if (!row) {
     console.warn(`⚠️ Keine AAO gefunden für ${info.alarmstufe} / ${info.stichwort}`);
     return;
   }
 
+  const aaoItems = parseAAOField(row['AAO']);
+  const aaoText = aaoItems.length
+    ? aaoItems.map(i => `• ${i}`).join('\n')
+    : (row['AAO'] || '–');
+
   const aaoEmbed = new EmbedBuilder()
     .setColor(0xFFA500)
     .setTitle('🚒 Alarm- & Ausrückeordnung')
     .setDescription(
-      `**Kategorie:** ${cat}\n` +
       `**Stichwort:** ${row['Stichwort'] || info.stichwort}\n` +
       `**Alarmstufe:** ${row['Alarmstufe'] || info.alarmstufe}`
     )
-    .addFields(
-      { name: 'Alarmierungsart', value: row['Alamierungsart'] || '–', inline: true },
-      { name: 'Verrechenbar', value: row['Verrechenbar'] || '–', inline: true },
-      { name: 'AAO (Fahrzeuge)', value: row['AAO'] || '–', inline: false },
-    );
+    .addFields({ name: 'AAO', value: aaoText });
 
   if (row['Langtext']) {
     aaoEmbed.addFields({ name: 'Hinweis', value: row['Langtext'], inline: false });
@@ -170,16 +175,15 @@ async function maybePostAAOFromText(text) {
 
   const aaoChannel = await client.channels.fetch(AAO_CHANNEL_ID);
   await aaoChannel.send({ embeds: [aaoEmbed] });
-  console.log(`✅ AAO gepostet für ${info.alarmstufe} / ${info.stichwort} (${cat})`);
+  console.log(`✅ AAO gepostet für ${info.alarmstufe} / ${info.stichwort}`);
 }
 
-// ====== dein übriger Code unverändert ======
-const responseTracker = new Collection();
+/* ===== Bot Lifecycle ===== */
 
 client.once('ready', async () => {
   console.log(`✅ Bot ist online als ${client.user.tag}`);
 
-  // NEU: AAO CSVs beim Start laden
+  // AAO-CSV laden
   try {
     const counts = await Promise.all([
       loadCategory('BRAND', CSV_URLS.BRAND),
@@ -192,12 +196,22 @@ client.once('ready', async () => {
     console.error('❌ AAO-CSV Laden fehlgeschlagen:', e.message);
   }
 
+  // Startup-Pin & Startnachricht
   try {
     const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
-    // alt: fetchPinned() → neu: fetchPins()
-    const pinned = await channel.messages.fetchPins();
-    for (const msg of pinned.values()) {
-      await msg.unpin();
+
+    // Cross-Version: fetchPins() (neu) oder fetchPinned() (alt)
+    let pins;
+    if (typeof channel.messages.fetchPins === 'function') {
+      pins = await channel.messages.fetchPins();
+    } else if (typeof channel.messages.fetchPinned === 'function') {
+      pins = await channel.messages.fetchPinned();
+    }
+
+    if (pins && pins.size) {
+      for (const [, msg] of pins) {
+        try { await msg.unpin(); } catch {}
+      }
     }
 
     const selectMenu = new StringSelectMenuBuilder()
@@ -278,7 +292,7 @@ client.on('messageCreate', async (message) => {
     const sentMessage = await targetChannel.send({
       embeds: [embed],
       components: [buttons],
-      allowedMentions: { parse: [] } // 🔇 Kein Ping hier!
+      allowedMentions: { parse: [] } // kein Ping hier
     });
 
     responseTracker.set(sentMessage.id, {
@@ -289,10 +303,7 @@ client.on('messageCreate', async (message) => {
     });
 
     console.log('📢 Alarmierung ohne Ping gesendet.');
-
-    // ====== NEU: AAO aus der Nachricht ermitteln & posten ======
     await maybePostAAOFromText(descriptionText);
-
   } catch (err) {
     console.error('❌ Fehler beim Senden:', err.message);
   }
@@ -308,19 +319,15 @@ client.on('interactionCreate', async (interaction) => {
     entry.notComing = entry.notComing.filter(id => id !== userId);
     entry.late = entry.late.filter(id => id !== userId);
 
-    if (interaction.customId === 'come_yes') {
-      entry.coming.push(userId);
-    } else if (interaction.customId === 'come_no') {
-      entry.notComing.push(userId);
-    } else if (interaction.customId === 'come_late') {
-      entry.late.push(userId);
-    }
+    if (interaction.customId === 'come_yes') entry.coming.push(userId);
+    else if (interaction.customId === 'come_no') entry.notComing.push(userId);
+    else if (interaction.customId === 'come_late') entry.late.push(userId);
 
     const originalEmbed = interaction.message.embeds[0];
     const newEmbed = EmbedBuilder.from(originalEmbed).setFields(
-      { name: '✅ Zusagen', value: entry.coming.length > 0 ? entry.coming.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher', inline: true },
-      { name: '❌ Absagen', value: entry.notComing.length > 0 ? entry.notComing.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher', inline: true },
-      { name: '🟠 Komme später', value: entry.late.length > 0 ? entry.late.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher', inline: true }
+      { name: '✅ Zusagen', value: entry.coming.length ? entry.coming.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher', inline: true },
+      { name: '❌ Absagen', value: entry.notComing.length ? entry.notComing.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher', inline: true },
+      { name: '🟠 Komme später', value: entry.late.length ? entry.late.map(id => `• <@${id}>`).join('\n') : 'Niemand bisher', inline: true }
     );
 
     await entry.message.edit({ embeds: [newEmbed] });
@@ -334,9 +341,23 @@ client.on('interactionCreate', async (interaction) => {
       .setCustomId('startup_nachalarmieren_modal')
       .setTitle('Nachalarmieren');
 
-    const stichwortInput = new TextInputBuilder().setCustomId('stichwort').setLabel('Stichwort').setStyle(TextInputStyle.Short).setRequired(true);
-    const adresseInput = new TextInputBuilder().setCustomId('adresse').setLabel('Adresse').setStyle(TextInputStyle.Short).setRequired(true);
-    const infoInput = new TextInputBuilder().setCustomId('info').setLabel('Weitere Infos').setStyle(TextInputStyle.Paragraph).setRequired(false);
+    const stichwortInput = new TextInputBuilder()
+      .setCustomId('stichwort')
+      .setLabel('Stichwort (z. B. FF - B1 - GMA-Brand)')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const adresseInput = new TextInputBuilder()
+      .setCustomId('adresse')
+      .setLabel('Adresse')
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    const infoInput = new TextInputBuilder()
+      .setCustomId('info')
+      .setLabel('Weitere Infos')
+      .setStyle(TextInputStyle.Paragraph)
+      .setRequired(false);
 
     modal.addComponents(
       new ActionRowBuilder().addComponents(stichwortInput),
@@ -344,9 +365,7 @@ client.on('interactionCreate', async (interaction) => {
       new ActionRowBuilder().addComponents(infoInput)
     );
 
-    // Merke Alarmtyp in der Session (als Workaround)
     interaction.client.alarmType = selectedAlarmtype;
-
     return interaction.showModal(modal);
   }
 
@@ -374,7 +393,7 @@ client.on('interactionCreate', async (interaction) => {
 
     const channel = await client.channels.fetch(TARGET_CHANNEL_ID);
     const sentMessage = await channel.send({
-      content: `<@&${NACHALARM_ROLE_ID}>`, // 📣 Nur hier wird gepingt!
+      content: `<@&${NACHALARM_ROLE_ID}>`, // nur hier wird gepingt
       embeds: [embed],
       components: [buttons],
       allowedMentions: { parse: ['roles'] }
@@ -387,7 +406,7 @@ client.on('interactionCreate', async (interaction) => {
       late: []
     });
 
-    // ====== NEU: AAO aus dem vom User eingegebenen Stichwort ermitteln & posten ======
+    // AAO auch bei der manuellen Nachalarmierung
     await maybePostAAOFromText(stichwort);
 
     return interaction.reply({ content: '✅ Nachalarmierung erfolgreich gesendet.', ephemeral: true });
