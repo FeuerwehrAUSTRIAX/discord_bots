@@ -21,7 +21,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent
   ]
 });
-.
+
 const SOURCE_CHANNEL_ID = '1388070050061221990';
 const TARGET_CHANNEL_ID = '1294003170116239431';
 const NACHALARM_ROLE_ID = '1293999568991555667';
