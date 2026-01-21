@@ -11,7 +11,6 @@ const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
 // Marker, damit der Bot "seine" Panel-Nachricht sicher wiederfindet
-const PANEL_MARKER = "[MYID_PANEL_V1]";
 const PANEL_TEXT =
   `${PANEL_MARKER}\n` +
   "Klick den Button, um *deine* Discord User-ID zu sehen:";
