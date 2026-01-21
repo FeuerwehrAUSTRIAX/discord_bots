@@ -10,11 +10,6 @@ const {
 const TOKEN = process.env.TOKEN;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 
-// Marker, damit der Bot "seine" Panel-Nachricht sicher wiederfindet
-const PANEL_TEXT =
-  `${PANEL_MARKER}\n` +
-  "Klick den Button, um *deine* Discord User-ID zu sehen:";
-
 if (!TOKEN || !CHANNEL_ID) {
   console.error("Missing env vars. Need TOKEN and CHANNEL_ID.");
   process.exit(1);
@@ -22,29 +17,35 @@ if (!TOKEN || !CHANNEL_ID) {
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-async function cleanupOldPanels(channel) {
-  // Holt alle angepinnten Nachrichten und entfernt alte Panels vom Bot
-  const pinned = await channel.messages.fetchPinned();
+function isMyIdPanelMessage(message) {
+  if (message.author?.id !== client.user.id) return false;
+  if (!message.components?.length) return false;
 
-  const oldPanels = pinned.filter(
-    (m) =>
-      m.author?.id === client.user.id &&
-      typeof m.content === "string" &&
-      m.content.includes(PANEL_MARKER)
+  // Prüfen, ob irgendwo der Button mit unserer customId existiert
+  return message.components.some((row) =>
+    row.components.some(
+      (component) =>
+        component.type === 2 && component.customId === "show_my_id"
+    )
   );
+}
+
+async function cleanupOldPanels(channel) {
+  const pinnedMessages = await channel.messages.fetchPinned();
+
+  const oldPanels = pinnedMessages.filter(isMyIdPanelMessage);
 
   for (const msg of oldPanels.values()) {
     try {
-      // erst entpinnen, dann löschen
       await msg.unpin();
     } catch (e) {
-      console.warn("Could not unpin old panel (missing perms?)", e?.message || e);
+      console.warn("Could not unpin old panel:", e?.message || e);
     }
 
     try {
       await msg.delete();
     } catch (e) {
-      console.warn("Could not delete old panel (missing perms?)", e?.message || e);
+      console.warn("Could not delete old panel:", e?.message || e);
     }
   }
 }
@@ -57,18 +58,16 @@ async function postNewPanel(channel) {
       .setStyle(ButtonStyle.Primary)
   );
 
-  const newMsg = await channel.send({
-    content: PANEL_TEXT,
+  const msg = await channel.send({
+    content: "Klick den Button, um *deine* Discord User-ID zu sehen:",
     components: [row],
   });
 
   try {
-    await newMsg.pin();
+    await msg.pin();
   } catch (e) {
-    console.warn("Could not pin new panel (missing perms?)", e?.message || e);
+    console.warn("Could not pin message:", e?.message || e);
   }
-
-  return newMsg;
 }
 
 client.once("ready", async () => {
@@ -78,19 +77,19 @@ client.once("ready", async () => {
     const channel = await client.channels.fetch(CHANNEL_ID);
 
     if (!channel || !channel.isTextBased()) {
-      console.error("CHANNEL_ID is not a valid text channel.");
+      console.error("CHANNEL_ID is not a text channel.");
       return;
     }
 
-    // 1) Alte Panel(s) entfernen (entpinnen + löschen)
+    // Alte Panels entfernen
     await cleanupOldPanels(channel);
 
-    // 2) Neues Panel posten + anpinnen
+    // Neues Panel posten + anpinnen
     await postNewPanel(channel);
 
-    console.log("Panel posted & pinned.");
+    console.log("Panel posted, pinned, old ones cleaned up.");
   } catch (err) {
-    console.error("Startup failed:", err);
+    console.error("Startup error:", err);
   }
 });
 
