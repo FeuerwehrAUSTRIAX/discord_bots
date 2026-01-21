@@ -1,5 +1,5 @@
 {
-  "name": "id-bot",
+  "name": "myid-bot",
   "version": "1.0.0",
   "main": "index.js",
   "type": "commonjs",
@@ -7,7 +7,7 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "discord.js": "^14.15.3",
+    "discord.js": "^14.16.0",
     "dotenv": "^16.4.5"
   }
 }
